@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.*?>
+
+<VBox xmlns="http://javafx.com/javafx/21"
+      xmlns:fx="http://javafx.com/fxml"
+      fx:controller="com.example.DockerComposeLauncherController"
+      spacing="10" alignment="CENTER">
+    <padding>
+        <Insets top="20" right="20" bottom="20" left="20"/>
+    </padding>
+
+    <Label text="Docker Compose Launcher" style="-fx-font-size: 16px; -fx-font-weight: bold;"/>
+
+    <Label fx:id="statusLabel" text="Status: Unknown"
+           style="-fx-font-size: 14px; -fx-font-weight: bold; -fx-text-fill: gray;"/>
+
+    <HBox spacing="10" alignment="CENTER">
+        <Label text="Select version:"/>
+        <ComboBox fx:id="versionComboBox" prefWidth="200"/>
+        <Button text="Start" onAction="#handleStart"/>
+    </HBox>
+
+    <Button text="Stop all" onAction="#handleStopAll"/>
+    <Button text="Refresh" onAction="#handleRefresh"/>
+
+    <Label text="Logs:" style="-fx-font-weight: bold;"/>
+    <TextArea fx:id="logArea" prefRowCount="10" prefWidth="400" wrapText="true"/>
+
+    <Label text="Running Containers:" style="-fx-font-weight: bold;"/>
+    <TableView fx:id="containerTable" prefHeight="200" prefWidth="400">
+        <columns>
+            <TableColumn fx:id="nameColumn" text="Name" prefWidth="150"/>
+            <TableColumn fx:id="imageColumn" text="Image" prefWidth="150"/>
+            <TableColumn fx:id="statusColumn" text="Status" prefWidth="100"/>
+        </columns>
+    </TableView>
+</VBox>
