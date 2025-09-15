@@ -17,4 +17,21 @@ public class ContainerInfo {
     public StringProperty nameProperty() { return name; }
     public StringProperty imageProperty() { return image; }
     public StringProperty statusProperty() { return status; }
+
+    // Convenience getters
+    public String getName() { return name.get(); }
+    public String getImage() { return image.get(); }
+    public String getStatus() { return status.get(); }
+
+    // Optional setters if needed
+    public void setName(String name) { this.name.set(name); }
+    public void setImage(String image) { this.image.set(image); }
+    public void setStatus(String status) { this.status.set(status); }
+
+    @Override
+    public String toString() {
+        return "ContainerInfo{name=" + getName() +
+                ", image=" + getImage() +
+                ", status=" + getStatus() + "}";
+    }
 }

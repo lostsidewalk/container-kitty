@@ -25,6 +25,7 @@
 
     <Button text="Stop all" onAction="#handleStopAll"/>
     <Button text="Refresh" onAction="#handleRefresh"/>
+    <Button text="Clear Logs" onAction="#handleClearLogs"/>
 
     <Label text="Logs:" style="-fx-font-weight: bold;"/>
     <TextArea fx:id="logArea" prefRowCount="10" prefWidth="400" wrapText="true"/>
