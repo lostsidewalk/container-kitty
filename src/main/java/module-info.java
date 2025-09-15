@@ -1,4 +1,4 @@
-module com.example.demo {
+module container.kitty {
     requires javafx.controls;
     requires javafx.fxml;
 
