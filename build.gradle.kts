@@ -6,7 +6,7 @@ plugins {
     id("com.github.johnrengelman.shadow") version "8.1.1"
 }
 
-group = "com.example"
+group = "container.kitty"
 version = "1.0-SNAPSHOT"
 
 repositories {
@@ -26,8 +26,8 @@ tasks.withType<JavaCompile> {
 }
 
 application {
-    mainModule.set("com.example.demo")
-    mainClass.set("com.example.demo.HelloApplication")
+    mainModule.set("container.kitty")
+    mainClass.set("container.kitty.ContainerKittyApplication")
 }
 
 javafx {
@@ -51,6 +51,7 @@ tasks.named<com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar>("shadowJ
     archiveClassifier.set("")
     archiveVersion.set(project.version.toString())
     mergeServiceFiles()
+    isZip64 = true
 }
 
 tasks.named("build") {

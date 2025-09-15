@@ -22,6 +22,11 @@ public class ContainerKittyController {
     private static final String VERSIONS_JSON_URL =
             "https://gitlab.com/<namespace>/<repo>/-/raw/main/docker/compose/versions.json";
 
+    private static final String DOCKER_CMD = "docker";
+    private static final String COMPOSE_CMD = "compose";
+    private static final String UP_CMD = "up";
+    private static final String DOWN_CMD = "down";
+
     @FXML private Label statusLabel;
     @FXML private ComboBox<String> versionComboBox;
     @FXML private TextArea logArea;
@@ -32,6 +37,7 @@ public class ContainerKittyController {
 
     private Timeline statusUpdater;
     private File tempComposeDir;
+    private File activeComposeFile;
 
     @FXML
     private void handleClearLogs() {
@@ -50,22 +56,21 @@ public class ContainerKittyController {
             try {
                 File composeFile = downloadComposeFile(version);
                 if (composeFile == null) {
-                    appendLog("ERROR: Failed to download compose file for version: " + version);
-                    showError("Failed to download compose file for version: " + version);
+                    String msg = "Failed to download compose file for version: " + version;
+                    appendLog("ERROR: " + msg);
+                    showError(msg);
                     return;
                 }
 
-                String[] cmd = {
-                        "docker", "compose",
-                        "-f", composeFile.getAbsolutePath(),
-                        "up", "-d"
-                };
+                activeComposeFile = composeFile;
+                String[] cmd = {DOCKER_CMD, COMPOSE_CMD, "-f", composeFile.getAbsolutePath(), UP_CMD, "-d"};
                 _runCommand(cmd);
                 appendLog("Started version: " + version);
 
             } catch (IOException e) {
-                appendLog("ERROR: " + e.getMessage());
-                showError("Error starting version: " + e.getMessage());
+                String msg = "Error starting version: " + e.getMessage();
+                appendLog("ERROR: " + msg);
+                showError(msg);
             }
         });
     }
@@ -73,21 +78,15 @@ public class ContainerKittyController {
     @FXML
     private void handleStopAll() {
         runCommandAsync(() -> {
-            if (tempComposeDir != null) {
-                File[] files = tempComposeDir.listFiles((d, name) -> name.endsWith(".yml"));
-                if (files != null && files.length > 0) {
-                    String[] cmd = { "docker", "compose", "-f", files[0].getAbsolutePath(), "down" };
-                    _runCommand(cmd);
-                    appendLog("Took down entire composition.");
-                } else {
-                    String msg = "No composition is currently running; nothing to stop.";
-                    appendLog("ERROR: " + msg);
-                    showError(msg);   // popup
-                }
+            if (activeComposeFile != null && activeComposeFile.exists()) {
+                String[] cmd = {DOCKER_CMD, COMPOSE_CMD, "-f", activeComposeFile.getAbsolutePath(), DOWN_CMD};
+                _runCommand(cmd);
+                appendLog("Took down entire composition.");
+                activeComposeFile = null;
             } else {
-                String msg = "Temporary compose directory not initialized; cannot stop composition.";
+                String msg = "No composition is currently running; nothing to stop.";
                 appendLog("ERROR: " + msg);
-                showError(msg);   // popup
+                showError(msg);
             }
             refreshContainers();
         });
@@ -99,8 +98,9 @@ public class ContainerKittyController {
             try {
                 List<String> versions = fetchAvailableVersions();
                 if (versions.isEmpty()) {
-                    appendLog("No versions available from server.");
-                    showError("No versions available from server.");
+                    String msg = "No versions available from server.";
+                    appendLog("ERROR: " + msg);
+                    showError(msg);
                     return;
                 }
                 Platform.runLater(() -> {
@@ -109,8 +109,9 @@ public class ContainerKittyController {
                 });
                 appendLog("Refreshed versions list.");
             } catch (IOException e) {
-                appendLog("ERROR fetching versions: " + e.getMessage());
-                showError("Failed to fetch available versions: " + e.getMessage());
+                String msg = "Failed to fetch available versions: " + e.getMessage();
+                appendLog("ERROR: " + msg);
+                showError(msg);
             }
 
             refreshContainers();
@@ -146,13 +147,13 @@ public class ContainerKittyController {
             tempComposeDir = Files.createTempDirectory("docker-compose-temp").toFile();
             tempComposeDir.deleteOnExit();
         } catch (IOException e) {
-            appendLog("ERROR creating temp directory: " + e.getMessage());
-            showError("Cannot create temporary folder for compose files.");
+            String msg = "Cannot create temporary folder for compose files: " + e.getMessage();
+            appendLog("ERROR: " + msg);
+            showError(msg);
         }
 
         refreshContainers();
 
-        // Periodic status updater
         statusUpdater = new Timeline(new KeyFrame(Duration.seconds(5), event -> {
             refreshContainers();
             updateStatus();
@@ -160,18 +161,26 @@ public class ContainerKittyController {
         statusUpdater.setCycleCount(Timeline.INDEFINITE);
         statusUpdater.play();
 
-        // Initial fetch of available versions
         handleRefresh();
     }
 
     /** Downloads a compose file for the given version to the temp directory */
     private File downloadComposeFile(String version) throws IOException {
+        // Clean old temp files
+        File[] oldFiles = tempComposeDir.listFiles((d, name) -> name.endsWith(".yml"));
+        if (oldFiles != null) {
+            for (File f : oldFiles) f.delete();
+        }
+
         String urlStr = VERSIONS_JSON_URL.replace("versions.json", "docker-compose-" + version + ".yml");
         URL url = new URL(urlStr);
         HttpURLConnection conn = (HttpURLConnection) url.openConnection();
         conn.setRequestMethod("GET");
+        conn.setConnectTimeout(5000);
+        conn.setReadTimeout(5000);
+
         if (conn.getResponseCode() != 200) {
-            appendLog("Failed to download: HTTP " + conn.getResponseCode());
+            appendLog("Failed to download compose file: HTTP " + conn.getResponseCode());
             return null;
         }
 
@@ -192,14 +201,16 @@ public class ContainerKittyController {
         URL url = new URL(VERSIONS_JSON_URL);
         HttpURLConnection conn = (HttpURLConnection) url.openConnection();
         conn.setRequestMethod("GET");
+        conn.setConnectTimeout(5000);
+        conn.setReadTimeout(5000);
+
         if (conn.getResponseCode() != 200) {
             throw new IOException("HTTP " + conn.getResponseCode());
         }
 
         try (InputStream in = conn.getInputStream()) {
             ObjectMapper mapper = new ObjectMapper();
-            return mapper.readValue(in, new TypeReference<>() {
-            });
+            return mapper.readValue(in, new TypeReference<>() {});
         }
     }
 
@@ -225,9 +236,7 @@ public class ContainerKittyController {
         Platform.runLater(() -> containerTable.getItems().clear());
 
         try {
-            ProcessBuilder pb = new ProcessBuilder(
-                    "docker", "ps", "--format", "{{.Names}}|{{.Image}}|{{.Status}}"
-            );
+            ProcessBuilder pb = new ProcessBuilder(DOCKER_CMD, "ps", "--format", "{{.Names}}|{{.Image}}|{{.Status}}");
             Process process = pb.start();
 
             try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {

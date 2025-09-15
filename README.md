@@ -31,7 +31,7 @@ A lightweight JavaFX application for managing Docker compositions for your proje
 
 ## Requirements
 
-- **Java 17+** (JDK or JRE)
+- **Java 21+** (JDK or JRE)
 - **Docker** and **Docker Compose** installed and in the system `PATH`.
 - Internet connection to fetch compose files from the GitLab repository.
 
