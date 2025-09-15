@@ -3,9 +3,8 @@ module com.example.demo {
     requires javafx.fxml;
 
     requires org.controlsfx.controls;
+    requires com.fasterxml.jackson.databind;
 
-    opens com.example.demo to javafx.fxml;
-    exports com.example.demo;
-    exports com.example;
-    opens com.example to javafx.fxml;
+    opens container.kitty to javafx.fxml;
+    exports container.kitty;
 }

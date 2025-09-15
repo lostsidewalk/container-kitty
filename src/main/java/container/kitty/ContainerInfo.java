@@ -1,4 +1,4 @@
-package com.example;
+package container.kitty;
 
 import javafx.beans.property.SimpleStringProperty;
 import javafx.beans.property.StringProperty;

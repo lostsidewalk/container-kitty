@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.*?>
+
+<VBox xmlns="http://javafx.com/javafx/21"
+      xmlns:fx="http://javafx.com/fxml"
+      fx:controller="container.kitty.ContainerKittyController"
+      spacing="10">
+    <padding>
+        <Insets top="15" right="10" bottom="20" left="5"/>
+    </padding>
+
+    <!-- Status Label -->
+    <Label fx:id="statusLabel" text="Status: Unknown" style="-fx-font-weight: bold; -fx-text-fill: gray;" />
+
+    <!-- Version Selection + Action Buttons -->
+    <HBox spacing="10">
+        <Label text="Version:" />
+        <ComboBox fx:id="versionComboBox" prefWidth="150" />
+        <Button text="Start" onAction="#handleStart" />
+        <Button text="Stop All" onAction="#handleStopAll" />
+        <Button text="Refresh" onAction="#handleRefresh" />
+        <Button text="Clear Logs" onAction="#handleClearLogs" />
+    </HBox>
+
+    <!-- Container Table -->
+    <TableView fx:id="containerTable" prefHeight="250" prefWidth="700">
+        <columns>
+            <TableColumn fx:id="nameColumn" text="Container Name" prefWidth="200" />
+            <TableColumn fx:id="imageColumn" text="Image" prefWidth="300" />
+            <TableColumn fx:id="statusColumn" text="Status" prefWidth="200" />
+        </columns>
+    </TableView>
+
+    <!-- Log Area -->
+    <VBox>
+        <Label text="Logs:" />
+        <TextArea fx:id="logArea" editable="false" wrapText="true" prefHeight="200" prefWidth="700" />
+    </VBox>
+
+</VBox>

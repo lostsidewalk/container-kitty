@@ -1,4 +1,4 @@
-package com.example.demo;
+package container.kitty;
 
 import javafx.application.Application;
 import javafx.fxml.FXMLLoader;
@@ -6,12 +6,10 @@ import javafx.scene.Parent;
 import javafx.scene.Scene;
 import javafx.stage.Stage;
 
-import java.io.IOException;
-
-public class HelloApplication extends Application {
+public class ContainerKittyApplication extends Application {
     @Override
     public void start(Stage primaryStage) throws Exception {
-        FXMLLoader loader = new FXMLLoader(HelloApplication.class.getResource("hello-view.fxml"));
+        FXMLLoader loader = new FXMLLoader(ContainerKittyApplication.class.getResource("container-kitty-view.fxml"));
         Parent root = loader.load();
 
         Scene scene = new Scene(root);
