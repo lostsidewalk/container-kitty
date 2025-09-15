@@ -44,21 +44,25 @@ public class DockerComposeLauncherController {
         }
 
         runCommandAsync(new String[]{
-                "docker", "compose", "-f", "docker-compose.yml", "-f", versionFile.getName(), "up", "-d"
-        });
-        appendLog("Started version: " + version);
+                "docker", "compose", "-f", "docker-compose.yml", "-f", "docker-compose-" + version + ".yml", "up", "-d"
+        }, () -> appendLog("Started version: " + version)); // log after completion
     }
 
     @FXML
     private void handleStopAll() {
-        runCommandAsync(new String[]{"docker", "compose", "-f", "docker-compose.yml", "down"});
-        appendLog("Took down entire composition.");
+        runCommandAsync(
+                new String[]{"docker", "compose", "-f", "docker-compose.yml", "down"},
+                () -> {
+                    appendLog("Took down entire composition.");
+                    refreshContainers(); // update table after stopping
+                }
+        );
     }
 
     @FXML
     private void handleRefresh() {
-        appendLog("Refreshing versions and containers...");
         refreshContainers();
+        appendLog("Refreshed versions and containers.");
     }
 
     @FXML
@@ -141,11 +145,14 @@ public class DockerComposeLauncherController {
         }
     }
 
-    private void runCommandAsync(String[] command) {
+    private void runCommandAsync(String[] command, Runnable onComplete) {
         Task<Void> task = new Task<>() {
             @Override
-            protected Void call() {
+            protected Void call() throws Exception {
                 _runCommand(command);
+                if (onComplete != null) {
+                    Platform.runLater(onComplete);
+                }
                 return null;
             }
         };
@@ -159,7 +166,8 @@ public class DockerComposeLauncherController {
             pb.redirectErrorStream(true);
             Process process = pb.start();
 
-            try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
+            try (BufferedReader reader = new BufferedReader(
+                    new InputStreamReader(process.getInputStream()))) {
                 String line;
                 while ((line = reader.readLine()) != null) {
                     appendLog(line);
@@ -168,7 +176,6 @@ public class DockerComposeLauncherController {
 
             int exitCode = process.waitFor();
             appendLog("Command exited with code: " + exitCode);
-            Platform.runLater(this::refreshContainers);
 
         } catch (IOException | InterruptedException e) {
             appendLog("Error: " + e.getMessage());

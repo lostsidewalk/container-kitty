@@ -7,35 +7,54 @@
 <VBox xmlns="http://javafx.com/javafx/21"
       xmlns:fx="http://javafx.com/fxml"
       fx:controller="com.example.DockerComposeLauncherController"
-      spacing="10" alignment="CENTER">
+      spacing="15" alignment="TOP_CENTER"
+      prefWidth="900" prefHeight="600">
+
     <padding>
         <Insets top="20" right="20" bottom="20" left="20"/>
     </padding>
 
-    <Label text="Docker Compose Launcher" style="-fx-font-size: 16px; -fx-font-weight: bold;"/>
+    <!-- Title -->
+    <Label text="Docker Compose Launcher"
+           style="-fx-font-size: 20px; -fx-font-weight: bold;"/>
 
+    <!-- Status -->
     <Label fx:id="statusLabel" text="Status: Unknown"
            style="-fx-font-size: 14px; -fx-font-weight: bold; -fx-text-fill: gray;"/>
 
+    <!-- Version selection + Start/Stop -->
     <HBox spacing="10" alignment="CENTER">
         <Label text="Select version:"/>
-        <ComboBox fx:id="versionComboBox" prefWidth="200"/>
+        <ComboBox fx:id="versionComboBox" prefWidth="150"/>
         <Button text="Start" onAction="#handleStart"/>
+        <Button text="Stop all" onAction="#handleStopAll"/>
     </HBox>
 
-    <Button text="Stop all" onAction="#handleStopAll"/>
-    <Button text="Refresh" onAction="#handleRefresh"/>
-    <Button text="Clear Logs" onAction="#handleClearLogs"/>
+    <!-- Refresh / Clear Logs -->
+    <HBox spacing="10" alignment="CENTER">
+        <Button text="Refresh" onAction="#handleRefresh"/>
+        <Button text="Clear Logs" onAction="#handleClearLogs"/>
+    </HBox>
 
-    <Label text="Logs:" style="-fx-font-weight: bold;"/>
-    <TextArea fx:id="logArea" prefRowCount="10" prefWidth="400" wrapText="true"/>
+    <!-- SplitPane: Logs and Containers Table -->
+    <SplitPane orientation="VERTICAL" VBox.vgrow="ALWAYS">
+        <!-- Logs -->
+        <VBox>
+            <Label text="Logs:" style="-fx-font-weight: bold;"/>
+            <TextArea fx:id="logArea" wrapText="true" VBox.vgrow="ALWAYS" prefHeight="200"/>
+        </VBox>
 
-    <Label text="Running Containers:" style="-fx-font-weight: bold;"/>
-    <TableView fx:id="containerTable" prefHeight="200" prefWidth="400">
-        <columns>
-            <TableColumn fx:id="nameColumn" text="Name" prefWidth="150"/>
-            <TableColumn fx:id="imageColumn" text="Image" prefWidth="150"/>
-            <TableColumn fx:id="statusColumn" text="Status" prefWidth="100"/>
-        </columns>
-    </TableView>
+        <!-- Containers Table -->
+        <VBox>
+            <Label text="Running Containers:" style="-fx-font-weight: bold;"/>
+            <TableView fx:id="containerTable" VBox.vgrow="ALWAYS" prefHeight="250">
+                <columns>
+                    <TableColumn fx:id="nameColumn" text="Name" prefWidth="250"/>
+                    <TableColumn fx:id="imageColumn" text="Image" prefWidth="400"/>
+                    <TableColumn fx:id="statusColumn" text="Status" prefWidth="150"/>
+                </columns>
+            </TableView>
+        </VBox>
+    </SplitPane>
+
 </VBox>
