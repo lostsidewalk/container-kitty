@@ -1,0 +1,4 @@
+{
+  "compositions": [ "backend-dev", "backend-prod", "frontend-dev", "frontend-prod" ],
+  "versions": [ "0.0.0", "0.0.1", "0.0.2" ]
+}

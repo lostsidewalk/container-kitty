@@ -12,32 +12,44 @@
         <Insets top="15" right="10" bottom="20" left="5"/>
     </padding>
 
+    <MenuBar>
+        <Menu text="Help">
+            <MenuItem text="About" onAction="#handleAbout"/>
+        </Menu>
+    </MenuBar>
+
     <!-- Status Label -->
     <Label fx:id="statusLabel" text="Status: Unknown" style="-fx-font-weight: bold; -fx-text-fill: gray;" />
 
-    <!-- Version Selection + Action Buttons -->
-    <HBox spacing="10">
-        <Label text="Version:" />
-        <ComboBox fx:id="versionComboBox" prefWidth="150" />
-        <Button text="Start" onAction="#handleStart" />
-        <Button text="Stop All" onAction="#handleStopAll" />
-        <Button text="Refresh" onAction="#handleRefresh" />
-        <Button text="Clear Logs" onAction="#handleClearLogs" />
+    <!-- Composition + Version Selection + Action Buttons -->
+    <HBox spacing="10" alignment="CENTER">
+        <Label text="Composition:"/>
+        <ComboBox fx:id="compositionComboBox" promptText="Select composition" prefWidth="200"/>
+        <Label text="Version:"/>
+        <ComboBox fx:id="versionComboBox" promptText="Select version" prefWidth="150"/>
+        <Button fx:id="startButton" text="Start" onAction="#handleStart"/>
+        <Button fx:id="stopAllButton" text="Stop All" onAction="#handleStopAll"/>
+        <Button text="Refresh" onAction="#handleRefresh"/>
+        <Button text="Clear Logs" onAction="#handleClearLogs"/>
     </HBox>
 
-    <!-- Container Table -->
-    <TableView fx:id="containerTable" prefHeight="250" prefWidth="700">
-        <columns>
-            <TableColumn fx:id="nameColumn" text="Container Name" prefWidth="200" />
-            <TableColumn fx:id="imageColumn" text="Image" prefWidth="300" />
-            <TableColumn fx:id="statusColumn" text="Status" prefWidth="200" />
-        </columns>
-    </TableView>
+    <!-- SplitPane for Containers Table and Logs -->
+    <SplitPane orientation="VERTICAL" VBox.vgrow="ALWAYS" dividerPositions="0.7">
 
-    <!-- Log Area -->
-    <VBox>
-        <Label text="Logs:" />
-        <TextArea fx:id="logArea" editable="false" wrapText="true" prefHeight="200" prefWidth="700" />
-    </VBox>
+        <!-- Container Table -->
+        <TableView fx:id="containerTable" prefHeight="250" prefWidth="700">
+            <columns>
+                <TableColumn fx:id="nameColumn" text="Container Name" prefWidth="200" />
+                <TableColumn fx:id="imageColumn" text="Image" prefWidth="300" />
+                <TableColumn fx:id="statusColumn" text="Status" prefWidth="200" />
+            </columns>
+        </TableView>
 
+        <!-- Logs -->
+        <VBox>
+            <Label text="Logs:" />
+            <TextArea fx:id="logArea" editable="false" wrapText="true" prefHeight="200" prefWidth="700" VBox.vgrow="ALWAYS" />
+        </VBox>
+
+    </SplitPane>
 </VBox>

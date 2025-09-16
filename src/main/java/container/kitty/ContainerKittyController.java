@@ -5,6 +5,8 @@ import javafx.animation.Timeline;
 import javafx.application.Platform;
 import javafx.fxml.FXML;
 import javafx.scene.control.*;
+import javafx.scene.layout.Region;
+import javafx.scene.layout.VBox;
 import javafx.util.Duration;
 
 import java.io.*;
@@ -15,29 +17,97 @@ import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.core.type.TypeReference;
 
 public class ContainerKittyController {
 
+    // Remote URL for production
     private static final String VERSIONS_JSON_URL =
             "https://gitlab.com/<namespace>/<repo>/-/raw/main/docker/compose/versions.json";
+
+    // Dev resource path (classpath)
+    private static final String DEV_VERSIONS_JSON_RESOURCE = "dev-versions.json"; // dev-versions.json
 
     private static final String DOCKER_CMD = "docker";
     private static final String COMPOSE_CMD = "compose";
     private static final String UP_CMD = "up";
     private static final String DOWN_CMD = "down";
 
+    private static class VersionsManifest {
+        public List<String> compositions;
+        public List<String> versions;
+    }
+
     @FXML private Label statusLabel;
     @FXML private ComboBox<String> versionComboBox;
+    @FXML private ComboBox<String> compositionComboBox;
     @FXML private TextArea logArea;
     @FXML private TableView<ContainerInfo> containerTable;
     @FXML private TableColumn<ContainerInfo, String> nameColumn;
     @FXML private TableColumn<ContainerInfo, String> imageColumn;
     @FXML private TableColumn<ContainerInfo, String> statusColumn;
+    @FXML private Button startButton;
+    @FXML private Button stopAllButton;
 
+    // local cache of lists
+    private List<String> availableCompositions = List.of();
+    private List<String> availableVersions = List.of();
     private Timeline statusUpdater;
     private File tempComposeDir;
     private File activeComposeFile;
+
+    @FXML
+    private void handleAbout() {
+        String tempDirPath = (tempComposeDir != null) ? tempComposeDir.getAbsolutePath() : "Not initialized";
+        String dockerPath = "Not found";
+
+        try {
+            ProcessBuilder pb = new ProcessBuilder("which", "docker");
+            Process process = pb.start();
+            try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
+                String line = reader.readLine();
+                if (line != null && !line.isEmpty()) {
+                    dockerPath = line;
+                }
+            }
+            process.waitFor();
+        } catch (IOException | InterruptedException e) {
+            dockerPath = "Error detecting docker path: " + e.getMessage();
+        }
+
+        String content = """
+        Container Kitty Launcher
+        Version: 1.0.0
+        Author: Your Team
+        Built with JavaFX
+
+        Java Runtime: %s
+        JavaFX Runtime: %s
+        OS: %s %s (%s)
+        Docker Executable: %s
+
+        Docker Compose Versions JSON:
+        %s
+
+        Temporary Compose Directory:
+        %s
+        """.formatted(
+                System.getProperty("java.version"),
+                System.getProperty("javafx.runtime.version", "Unknown"),
+                System.getProperty("os.name"),
+                System.getProperty("os.version"),
+                System.getProperty("os.arch"),
+                dockerPath,
+                VERSIONS_JSON_URL,
+                tempDirPath
+        );
+
+        Alert alert = new Alert(Alert.AlertType.INFORMATION);
+        alert.setTitle("About Container Kitty");
+        alert.setHeaderText("Container Kitty Launcher");
+        alert.setContentText(content);
+        alert.getDialogPane().setMinHeight(Region.USE_PREF_SIZE);
+        alert.showAndWait();
+    }
 
     @FXML
     private void handleClearLogs() {
@@ -46,7 +116,13 @@ public class ContainerKittyController {
 
     @FXML
     private void handleStart() {
+        String composition = compositionComboBox.getValue();
         String version = versionComboBox.getValue();
+
+        if (composition == null || composition.isEmpty()) {
+            showError("No composition selected.");
+            return;
+        }
         if (version == null || version.isEmpty()) {
             showError("No version selected.");
             return;
@@ -54,21 +130,19 @@ public class ContainerKittyController {
 
         runCommandAsync(() -> {
             try {
-                File composeFile = downloadComposeFile(version);
+                File composeFile = downloadComposeFile(composition, version);
                 if (composeFile == null) {
-                    String msg = "Failed to download compose file for version: " + version;
+                    String msg = "Failed to download compose file for " + composition + " " + version;
                     appendLog("ERROR: " + msg);
                     showError(msg);
                     return;
                 }
 
-                activeComposeFile = composeFile;
-                String[] cmd = {DOCKER_CMD, COMPOSE_CMD, "-f", composeFile.getAbsolutePath(), UP_CMD, "-d"};
+                String[] cmd = { "docker", "compose", "-f", composeFile.getAbsolutePath(), "up", "-d" };
                 _runCommand(cmd);
-                appendLog("Started version: " + version);
-
+                appendLog("Started " + composition + " version " + version);
             } catch (IOException e) {
-                String msg = "Error starting version: " + e.getMessage();
+                String msg = "Error starting composition: " + e.getMessage();
                 appendLog("ERROR: " + msg);
                 showError(msg);
             }
@@ -96,22 +170,30 @@ public class ContainerKittyController {
     private void handleRefresh() {
         runCommandAsync(() -> {
             try {
-                List<String> versions = fetchAvailableVersions();
-                if (versions.isEmpty()) {
-                    String msg = "No versions available from server.";
-                    appendLog("ERROR: " + msg);
-                    showError(msg);
+                VersionsManifest manifest = fetchVersionManifest();
+                if (manifest == null
+                        || manifest.compositions == null || manifest.compositions.isEmpty()
+                        || manifest.versions == null || manifest.versions.isEmpty()) {
+                    appendLog("No compositions or versions available from server.");
+                    showError("No compositions or versions available from server.");
                     return;
                 }
+
+                availableCompositions = manifest.compositions;
+                availableVersions = manifest.versions;
+
                 Platform.runLater(() -> {
-                    versionComboBox.getItems().setAll(versions);
+                    compositionComboBox.getItems().setAll(availableCompositions);
+                    compositionComboBox.getSelectionModel().selectFirst();
+
+                    versionComboBox.getItems().setAll(availableVersions);
                     versionComboBox.getSelectionModel().selectFirst();
                 });
-                appendLog("Refreshed versions list.");
+
+                appendLog("Refreshed compositions and versions.");
             } catch (IOException e) {
-                String msg = "Failed to fetch available versions: " + e.getMessage();
-                appendLog("ERROR: " + msg);
-                showError(msg);
+                appendLog("ERROR fetching manifest: " + e.getMessage());
+                showError("Failed to fetch compositions/versions: " + e.getMessage());
             }
 
             refreshContainers();
@@ -120,6 +202,20 @@ public class ContainerKittyController {
 
     @FXML
     public void initialize() {
+        // Disable controls initially
+        startButton.setDisable(true);
+        stopAllButton.setDisable(true);
+
+        // Enable Start/Stop only when both composition and version are selected
+        Runnable updateControls = () -> {
+            boolean enabled = compositionComboBox.getValue() != null && !compositionComboBox.getValue().isEmpty()
+                    && versionComboBox.getValue() != null && !versionComboBox.getValue().isEmpty();
+            startButton.setDisable(!enabled);
+            stopAllButton.setDisable(!enabled);
+        };
+        compositionComboBox.valueProperty().addListener((obs, oldV, newV) -> updateControls.run());
+        versionComboBox.valueProperty().addListener((obs, oldV, newV) -> updateControls.run());
+
         // Table bindings
         nameColumn.setCellValueFactory(data -> data.getValue().nameProperty());
         imageColumn.setCellValueFactory(data -> data.getValue().imageProperty());
@@ -164,15 +260,41 @@ public class ContainerKittyController {
         handleRefresh();
     }
 
-    /** Downloads a compose file for the given version to the temp directory */
-    private File downloadComposeFile(String version) throws IOException {
-        // Clean old temp files
+    /** Fetch available compositions and versions (remote or dev resource in dev mode) */
+    private VersionsManifest fetchVersionManifest() throws IOException {
+        InputStream in = ContainerKittyController.class.getResourceAsStream(DEV_VERSIONS_JSON_RESOURCE);
+        if (in != null) {
+            appendLog("Loading versions.json from dev resource: " + DEV_VERSIONS_JSON_RESOURCE);
+        } else {
+            appendLog("Loading versions.json from remote: " + VERSIONS_JSON_URL);
+            URL url = new URL(VERSIONS_JSON_URL);
+            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+            conn.setRequestMethod("GET");
+            if (conn.getResponseCode() != 200) {
+                throw new IOException("HTTP " + conn.getResponseCode());
+            }
+            in = conn.getInputStream();
+        }
+        InputStream inputStream = in;
+
+        try (inputStream) {
+            ObjectMapper mapper = new ObjectMapper();
+            return mapper.readValue(in, VersionsManifest.class);
+        }
+    }
+
+    /** Downloads a compose file for the given composition+version to temp directory */
+    private File downloadComposeFile(String composition, String version) throws IOException {
+        // clean old .yml files optionally
         File[] oldFiles = tempComposeDir.listFiles((d, name) -> name.endsWith(".yml"));
         if (oldFiles != null) {
             for (File f : oldFiles) f.delete();
         }
 
-        String urlStr = VERSIONS_JSON_URL.replace("versions.json", "docker-compose-" + version + ".yml");
+        // MUST match naming convention in repo
+        String fileName = String.format("docker-compose-%s-%s.yml", composition, version);
+        String urlStr = VERSIONS_JSON_URL.replace("versions.json", fileName);
+
         URL url = new URL(urlStr);
         HttpURLConnection conn = (HttpURLConnection) url.openConnection();
         conn.setRequestMethod("GET");
@@ -180,11 +302,11 @@ public class ContainerKittyController {
         conn.setReadTimeout(5000);
 
         if (conn.getResponseCode() != 200) {
-            appendLog("Failed to download compose file: HTTP " + conn.getResponseCode());
+            appendLog("Failed to download " + fileName + ": HTTP " + conn.getResponseCode());
             return null;
         }
 
-        File outFile = new File(tempComposeDir, "docker-compose-" + version + ".yml");
+        File outFile = new File(tempComposeDir, fileName);
         try (InputStream in = conn.getInputStream();
              FileOutputStream fos = new FileOutputStream(outFile)) {
             byte[] buf = new byte[8192];
@@ -196,39 +318,57 @@ public class ContainerKittyController {
         return outFile;
     }
 
-    /** Fetch available versions from versions.json in GitLab */
-    private List<String> fetchAvailableVersions() throws IOException {
-        URL url = new URL(VERSIONS_JSON_URL);
-        HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-        conn.setRequestMethod("GET");
-        conn.setConnectTimeout(5000);
-        conn.setReadTimeout(5000);
-
-        if (conn.getResponseCode() != 200) {
-            throw new IOException("HTTP " + conn.getResponseCode());
-        }
-
-        try (InputStream in = conn.getInputStream()) {
-            ObjectMapper mapper = new ObjectMapper();
-            return mapper.readValue(in, new TypeReference<>() {});
-        }
-    }
-
-    /** Updates status label with running containers count */
+    /** Updates status label with running containers count and tooltip for non-running containers */
     private void updateStatus() {
-        long running = containerTable.getItems().stream()
+        List<ContainerInfo> containers = containerTable.getItems();
+
+        long running = containers.stream()
                 .filter(c -> c.getStatus().startsWith("Up")).count();
-        long total = containerTable.getItems().size();
+        long total = containers.size();
+
+        String statusText;
+        String style;
 
         if (total == 0) {
-            statusLabel.setText("Status: Stopped");
-            statusLabel.setStyle("-fx-text-fill: red; -fx-font-weight: bold;");
+            statusText = "Status: Stopped";
+            style = "-fx-text-fill: red; -fx-font-weight: bold;";
         } else {
-            statusLabel.setText("Status: " + running + "/" + total + " running");
-            statusLabel.setStyle(running == total ?
-                    "-fx-text-fill: green; -fx-font-weight: bold;" :
-                    "-fx-text-fill: orange; -fx-font-weight: bold;");
+            statusText = "Status: " + running + "/" + total + " running";
+            style = running == total
+                    ? "-fx-text-fill: green; -fx-font-weight: bold;"
+                    : "-fx-text-fill: orange; -fx-font-weight: bold;";
         }
+
+        List<Label> containerLabels = containers.stream()
+                .filter(c -> !c.getStatus().startsWith("Up"))
+                .map(c -> {
+                    Label lbl = new Label(c.getName() + " (" + c.getStatus() + ")");
+                    lbl.setStyle("-fx-text-fill: red;");
+                    return lbl;
+                })
+                .toList();
+
+        Platform.runLater(() -> {
+            statusLabel.setText(statusText);
+            statusLabel.setStyle(style);
+
+            if (!containerLabels.isEmpty()) {
+                VBox tooltipBox = new VBox(2);
+                tooltipBox.getChildren().addAll(containerLabels);
+
+                ScrollPane scrollPane = new ScrollPane(tooltipBox);
+                scrollPane.setPrefWidth(250);
+                scrollPane.setPrefHeight(150);
+                scrollPane.setFitToWidth(true);
+
+                Tooltip tooltip = new Tooltip();
+                tooltip.setGraphic(scrollPane);
+                tooltip.setText(""); // no text, only graphic
+                statusLabel.setTooltip(tooltip);
+            } else {
+                statusLabel.setTooltip(null);
+            }
+        });
     }
 
     /** Refreshes the table of running containers */
