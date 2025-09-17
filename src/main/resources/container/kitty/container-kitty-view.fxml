@@ -23,9 +23,6 @@
         <Button text="About" onAction="#handleAbout"/>
     </ToolBar>
 
-    <!-- Status Label -->
-    <Label fx:id="statusLabel" text="Status: Unknown" style="-fx-font-weight: bold; -fx-text-fill: gray;" />
-
     <!-- Composition + Version Selection -->
     <HBox spacing="10" alignment="CENTER_LEFT">
         <Label text="Composition:"/>
@@ -66,6 +63,8 @@
             <Label text="Logs:"/>
             <TextArea fx:id="logArea" editable="false" wrapText="true" VBox.vgrow="ALWAYS"
                       style="-fx-control-inner-background: black; -fx-text-fill: gray; -fx-font-family: monospace;"/>
+            <!-- Status Label -->
+            <Label fx:id="statusLabel" text="Status: Unknown" style="-fx-font-weight: bold; -fx-text-fill: gray;" />
         </VBox>
 
     </SplitPane>
