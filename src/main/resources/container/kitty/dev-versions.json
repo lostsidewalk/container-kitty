@@ -1,4 +1,12 @@
 {
-  "compositions": [ "backend-dev", "backend-prod", "frontend-dev", "frontend-prod" ],
-  "versions": [ "0.0.0", "0.0.1", "0.0.2" ]
+  "compositions": [
+    { "name": "backend-dev", "comment": "Runs backend services only for development." },
+    { "name": "all-dev", "comment": "Runs the full stack: backend, frontend, database, object storage." },
+    { "name": "frontend-dev", "comment": "Runs frontend services only with mock backend." }
+  ],
+  "versions": [
+    { "ident": "0.0.0", "comment": "Initial setup with basic backend services." },
+    { "ident": "0.0.1", "comment": "Implemented API version 1." },
+    { "ident": "0.0.2", "comment": "Bugfixes and minor improvements." }
+  ]
 }

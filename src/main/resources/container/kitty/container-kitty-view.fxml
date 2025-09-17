@@ -7,48 +7,65 @@
 <VBox xmlns="http://javafx.com/javafx/21"
       xmlns:fx="http://javafx.com/fxml"
       fx:controller="container.kitty.ContainerKittyController"
-      spacing="10">
+      spacing="10"
+      VBox.vgrow="ALWAYS">
+
     <padding>
         <Insets top="15" right="10" bottom="20" left="5"/>
     </padding>
 
-    <MenuBar>
-        <Menu text="Help">
-            <MenuItem text="About" onAction="#handleAbout"/>
-        </Menu>
-    </MenuBar>
+    <!-- Toolbar for actions -->
+    <ToolBar>
+        <Button text="Refresh" onAction="#handleRefresh"/>
+        <Button text="Clear Logs" onAction="#handleClearLogs"/>
+        <!-- Spacer -->
+        <Region HBox.hgrow="ALWAYS"/>
+        <Button text="About" onAction="#handleAbout"/>
+    </ToolBar>
 
     <!-- Status Label -->
     <Label fx:id="statusLabel" text="Status: Unknown" style="-fx-font-weight: bold; -fx-text-fill: gray;" />
 
-    <!-- Composition + Version Selection + Action Buttons -->
-    <HBox spacing="10" alignment="CENTER">
+    <!-- Composition + Version Selection -->
+    <HBox spacing="10" alignment="CENTER_LEFT">
         <Label text="Composition:"/>
         <ComboBox fx:id="compositionComboBox" promptText="Select composition" prefWidth="200"/>
         <Label text="Version:"/>
         <ComboBox fx:id="versionComboBox" promptText="Select version" prefWidth="150"/>
         <Button fx:id="startButton" text="Start" onAction="#handleStart"/>
         <Button fx:id="stopAllButton" text="Stop All" onAction="#handleStopAll"/>
-        <Button text="Refresh" onAction="#handleRefresh"/>
-        <Button text="Clear Logs" onAction="#handleClearLogs"/>
     </HBox>
 
-    <!-- SplitPane for Containers Table and Logs -->
+    <!-- Composition & Version Info -->
+    <VBox spacing="5">
+        <HBox spacing="5" alignment="TOP_LEFT">
+            <Label text="Composition info:"/>
+            <Label fx:id="compositionCommentLabel" wrapText="true"/>
+        </HBox>
+        <HBox spacing="5" alignment="TOP_LEFT">
+            <Label text="Version info:"/>
+            <Label fx:id="versionCommentLabel" wrapText="true"/>
+        </HBox>
+    </VBox>
+
+    <!-- SplitPane for Containers and Logs -->
     <SplitPane orientation="VERTICAL" VBox.vgrow="ALWAYS" dividerPositions="0.7">
 
         <!-- Container Table -->
-        <TableView fx:id="containerTable" prefHeight="250" prefWidth="700">
+        <TableView fx:id="containerTable" VBox.vgrow="ALWAYS">
             <columns>
-                <TableColumn fx:id="nameColumn" text="Container Name" prefWidth="200" />
-                <TableColumn fx:id="imageColumn" text="Image" prefWidth="300" />
-                <TableColumn fx:id="statusColumn" text="Status" prefWidth="200" />
+                <TableColumn fx:id="nameColumn" text="Container Name" prefWidth="200"/>
+                <TableColumn fx:id="imageColumn" text="Image" prefWidth="300"/>
+                <TableColumn fx:id="memUsageColumn" text="Memory Usage" prefWidth="100"/>
+                <TableColumn fx:id="statusColumn" text="Status" prefWidth="200"/>
             </columns>
         </TableView>
 
         <!-- Logs -->
-        <VBox>
-            <Label text="Logs:" />
-            <TextArea fx:id="logArea" editable="false" wrapText="true" prefHeight="200" prefWidth="700" VBox.vgrow="ALWAYS" />
+        <VBox spacing="5" VBox.vgrow="ALWAYS">
+            <Label text="Logs:"/>
+            <TextArea fx:id="logArea" editable="false" wrapText="true" VBox.vgrow="ALWAYS"
+                      style="-fx-control-inner-background: black; -fx-text-fill: gray; -fx-font-family: monospace;"/>
         </VBox>
 
     </SplitPane>

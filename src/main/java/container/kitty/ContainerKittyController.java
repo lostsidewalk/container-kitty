@@ -5,6 +5,7 @@ import javafx.animation.Timeline;
 import javafx.application.Platform;
 import javafx.fxml.FXML;
 import javafx.scene.control.*;
+import javafx.scene.image.ImageView;
 import javafx.scene.layout.Region;
 import javafx.scene.layout.VBox;
 import javafx.util.Duration;
@@ -15,7 +16,10 @@ import java.net.URL;
 import java.nio.file.Files;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 public class ContainerKittyController {
@@ -33,24 +37,27 @@ public class ContainerKittyController {
     private static final String DOWN_CMD = "down";
 
     private static class VersionsManifest {
-        public List<String> compositions;
-        public List<String> versions;
+        public List<Composition> compositions;
+        public List<Version> versions;
     }
 
     @FXML private Label statusLabel;
-    @FXML private ComboBox<String> versionComboBox;
-    @FXML private ComboBox<String> compositionComboBox;
+    @FXML private ComboBox<Version> versionComboBox;
+    @FXML private ComboBox<Composition> compositionComboBox;
     @FXML private TextArea logArea;
     @FXML private TableView<ContainerInfo> containerTable;
     @FXML private TableColumn<ContainerInfo, String> nameColumn;
     @FXML private TableColumn<ContainerInfo, String> imageColumn;
+    @FXML private TableColumn<ContainerInfo, String> memUsageColumn;
     @FXML private TableColumn<ContainerInfo, String> statusColumn;
     @FXML private Button startButton;
     @FXML private Button stopAllButton;
+    @FXML private Label compositionCommentLabel;
+    @FXML private Label versionCommentLabel;
 
     // local cache of lists
-    private List<String> availableCompositions = List.of();
-    private List<String> availableVersions = List.of();
+    private List<Composition> availableCompositions = List.of();
+    private List<Version> availableVersions = List.of();
     private Timeline statusUpdater;
     private File tempComposeDir;
     private File activeComposeFile;
@@ -58,21 +65,7 @@ public class ContainerKittyController {
     @FXML
     private void handleAbout() {
         String tempDirPath = (tempComposeDir != null) ? tempComposeDir.getAbsolutePath() : "Not initialized";
-        String dockerPath = "Not found";
-
-        try {
-            ProcessBuilder pb = new ProcessBuilder("which", "docker");
-            Process process = pb.start();
-            try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
-                String line = reader.readLine();
-                if (line != null && !line.isEmpty()) {
-                    dockerPath = line;
-                }
-            }
-            process.waitFor();
-        } catch (IOException | InterruptedException e) {
-            dockerPath = "Error detecting docker path: " + e.getMessage();
-        }
+        String dockerPath = detectDockerPath();
 
         String content = """
         Container Kitty Launcher
@@ -101,12 +94,65 @@ public class ContainerKittyController {
                 tempDirPath
         );
 
+        TextArea textArea = new TextArea(content);
+        textArea.setEditable(false);
+        textArea.setWrapText(true);
+        textArea.setStyle("-fx-font-family: monospace; -fx-font-size: 12;");
+        textArea.setPrefWidth(500);
+        textArea.setPrefHeight(300);
+
         Alert alert = new Alert(Alert.AlertType.INFORMATION);
         alert.setTitle("About Container Kitty");
         alert.setHeaderText("Container Kitty Launcher");
-        alert.setContentText(content);
+        alert.getDialogPane().setContent(textArea);
         alert.getDialogPane().setMinHeight(Region.USE_PREF_SIZE);
+        // Load your logo from resources
+        try {
+            InputStream logoStream = getClass().getResourceAsStream("/container/kitty/logo.png");
+            if (logoStream != null) {
+                javafx.scene.image.Image logo = new javafx.scene.image.Image(logoStream);
+                ImageView imageView = new ImageView(logo);
+                imageView.setFitWidth(64);
+                imageView.setFitHeight(64);
+                alert.setGraphic(imageView);
+            }
+        } catch (Exception e) {
+            appendLog("Failed to load About logo: " + e.getMessage());
+        }
+
         alert.showAndWait();
+    }
+
+    private String detectDockerPath() {
+        String dockerPath = "Not found";
+
+        try {
+            String[] cmd;
+            String os = System.getProperty("os.name").toLowerCase();
+
+            if (os.contains("win")) {
+                cmd = new String[]{"cmd", "/c", "where", "docker.exe"};
+            } else {
+                cmd = new String[]{"which", "docker"};
+            }
+
+            ProcessBuilder pb = new ProcessBuilder(cmd);
+            Process process = pb.start();
+
+            try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
+                String line = reader.readLine();
+                if (line != null && !line.isEmpty()) {
+                    dockerPath = line;
+                }
+            }
+
+            process.waitFor();
+
+        } catch (IOException | InterruptedException e) {
+            dockerPath = "Error detecting docker path: " + e.getMessage();
+        }
+
+        return dockerPath;
     }
 
     @FXML
@@ -116,21 +162,21 @@ public class ContainerKittyController {
 
     @FXML
     private void handleStart() {
-        String composition = compositionComboBox.getValue();
-        String version = versionComboBox.getValue();
+        Composition composition = compositionComboBox.getValue();
+        Version version = versionComboBox.getValue();
 
-        if (composition == null || composition.isEmpty()) {
+        if (composition == null) {
             showError("No composition selected.");
             return;
         }
-        if (version == null || version.isEmpty()) {
+        if (version == null) {
             showError("No version selected.");
             return;
         }
 
         runCommandAsync(() -> {
             try {
-                File composeFile = downloadComposeFile(composition, version);
+                File composeFile = downloadComposeFile(composition.getName(), version.getIdent());
                 if (composeFile == null) {
                     String msg = "Failed to download compose file for " + composition + " " + version;
                     appendLog("ERROR: " + msg);
@@ -179,6 +225,19 @@ public class ContainerKittyController {
                     return;
                 }
 
+                compositionCommentMap.clear();
+                versionCommentMap.clear();
+
+                for (Composition comp : manifest.compositions) {
+                    compositionComboBox.getItems().add(comp);
+                    compositionCommentMap.put(comp.getName(), comp.getComment());
+                }
+
+                for (Version ver : manifest.versions) {
+                    versionComboBox.getItems().add(ver);
+                    versionCommentMap.put(ver.getIdent(), ver.getComment());
+                }
+
                 availableCompositions = manifest.compositions;
                 availableVersions = manifest.versions;
 
@@ -200,25 +259,48 @@ public class ContainerKittyController {
         });
     }
 
+    private final Map<String, String> compositionCommentMap = new HashMap<>();
+    private final Map<String, String> versionCommentMap = new HashMap<>();
+
     @FXML
     public void initialize() {
         // Disable controls initially
         startButton.setDisable(true);
         stopAllButton.setDisable(true);
 
+        memUsageColumn.setCellValueFactory(data -> data.getValue().memUsageProperty());
+
         // Enable Start/Stop only when both composition and version are selected
         Runnable updateControls = () -> {
-            boolean enabled = compositionComboBox.getValue() != null && !compositionComboBox.getValue().isEmpty()
-                    && versionComboBox.getValue() != null && !versionComboBox.getValue().isEmpty();
+            boolean enabled = compositionComboBox.getValue() != null && versionComboBox.getValue() != null;
             startButton.setDisable(!enabled);
             stopAllButton.setDisable(!enabled);
         };
         compositionComboBox.valueProperty().addListener((obs, oldV, newV) -> updateControls.run());
         versionComboBox.valueProperty().addListener((obs, oldV, newV) -> updateControls.run());
 
+        compositionComboBox.getSelectionModel().selectedItemProperty().addListener((obs, oldVal, newVal) -> {
+            if (newVal != null) {
+                String comment = compositionCommentMap.get(newVal.getName()); // Map<String,String>
+                compositionCommentLabel.setText(comment != null ? comment : "");
+                updateControls.run();
+            }
+        });
+
+        versionComboBox.getSelectionModel().selectedItemProperty().addListener((obs, oldVal, newVal) -> {
+            if (newVal != null) {
+                String comment = versionCommentMap.get(newVal.getIdent()); // Map<String,String>
+                versionCommentLabel.setText(comment != null ? comment : "");
+                updateControls.run();
+            }
+        });
+
+        containerTable.getSelectionModel().setSelectionMode(SelectionMode.SINGLE);
+
         // Table bindings
         nameColumn.setCellValueFactory(data -> data.getValue().nameProperty());
         imageColumn.setCellValueFactory(data -> data.getValue().imageProperty());
+        memUsageColumn.setCellValueFactory(data -> data.getValue().memUsageProperty());
         statusColumn.setCellValueFactory(data -> data.getValue().statusProperty());
 
         statusColumn.setCellFactory(column -> new TableCell<>() {
@@ -371,8 +453,11 @@ public class ContainerKittyController {
         });
     }
 
-    /** Refreshes the table of running containers */
     private void refreshContainers() {
+        // Remember currently selected container name
+        ContainerInfo selected = containerTable.getSelectionModel().getSelectedItem();
+        String selectedName = selected != null ? selected.getName() : null;
+
         Platform.runLater(() -> containerTable.getItems().clear());
 
         try {
@@ -384,8 +469,13 @@ public class ContainerKittyController {
                 while ((line = reader.readLine()) != null) {
                     String[] parts = line.split("\\|");
                     if (parts.length == 3) {
-                        ContainerInfo container = new ContainerInfo(parts[0], parts[1], parts[2]);
-                        Platform.runLater(() -> containerTable.getItems().add(container));
+                        ContainerInfo container = new ContainerInfo(parts[0], parts[1], parts[2], null);
+                        Platform.runLater(() -> {
+                            containerTable.getItems().add(container);
+                            if (selectedName != null && selectedName.equals(container.getName())) {
+                                containerTable.getSelectionModel().select(container);
+                            }
+                        });
                     }
                 }
             }
