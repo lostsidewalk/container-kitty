@@ -23,27 +23,47 @@
         <Button text="About" onAction="#handleAbout"/>
     </ToolBar>
 
-    <!-- Composition + Version Selection -->
-    <HBox spacing="10" alignment="CENTER_LEFT">
-        <Label text="Composition:"/>
-        <ComboBox fx:id="compositionComboBox" promptText="Select composition" prefWidth="200"/>
-        <Label text="Version:"/>
-        <ComboBox fx:id="versionComboBox" promptText="Select version" prefWidth="150"/>
-        <Button fx:id="startButton" text="Start" onAction="#handleStart"/>
-        <Button fx:id="stopAllButton" text="Stop All" onAction="#handleStopAll"/>
-    </HBox>
+    <GridPane hgap="10" alignment="CENTER_LEFT">
+        <!-- Three equal columns -->
+        <columnConstraints>
+            <ColumnConstraints percentWidth="33.3333"/>
+            <ColumnConstraints percentWidth="33.3333"/>
+            <ColumnConstraints percentWidth="33.3333"/>
+        </columnConstraints>
 
-    <!-- Composition & Version Info -->
-    <VBox spacing="5">
-        <HBox spacing="5" alignment="TOP_LEFT">
-            <Label text="Composition info:"/>
-            <Label fx:id="compositionCommentLabel" wrapText="true"/>
+        <!-- Composition column -->
+        <VBox GridPane.columnIndex="0" spacing="5" alignment="TOP_LEFT"
+              style="-fx-border-color: #CCCCCC; -fx-border-width: 1; -fx-padding: 15;">
+            <Label text="Composition:"/>
+            <ComboBox fx:id="compositionComboBox" promptText="Select composition" maxWidth="Infinity"/>
+            <StackPane prefHeight="48" maxHeight="48">
+                <Label fx:id="compositionCommentLabel" wrapText="true"
+                       maxWidth="Infinity"
+                       style="-fx-background-color: white; -fx-text-fill: black; -fx-padding: 5; -fx-overrun: ellipsis;"/>
+            </StackPane>
+        </VBox>
+
+        <!-- Version column -->
+        <VBox GridPane.columnIndex="1" spacing="5" alignment="TOP_LEFT"
+              style="-fx-border-color: #CCCCCC; -fx-border-width: 1; -fx-padding: 15;">
+            <Label text="Version:"/>
+            <ComboBox fx:id="versionComboBox" promptText="Select version" maxWidth="Infinity"/>
+            <StackPane prefHeight="48" maxHeight="48">
+                <Label fx:id="versionCommentLabel" wrapText="true"
+                       maxWidth="Infinity"
+                       style="-fx-background-color: white; -fx-text-fill: black; -fx-padding: 5; -fx-overrun: ellipsis;"/>
+            </StackPane>
+        </VBox>
+
+        <!-- Buttons column -->
+        <HBox GridPane.columnIndex="2" spacing="10" alignment="CENTER"
+              style="-fx-border-color: #CCCCCC; -fx-border-width: 1; -fx-padding: 15;">
+            <Region HBox.hgrow="ALWAYS"/>
+            <Button fx:id="startButton" text="Start" onAction="#handleStart" prefWidth="80"/>
+            <Button fx:id="stopAllButton" text="Stop All" onAction="#handleStopAll" prefWidth="80"/>
+            <Region HBox.hgrow="ALWAYS"/>
         </HBox>
-        <HBox spacing="5" alignment="TOP_LEFT">
-            <Label text="Version info:"/>
-            <Label fx:id="versionCommentLabel" wrapText="true"/>
-        </HBox>
-    </VBox>
+    </GridPane>
 
     <!-- SplitPane for Containers and Logs -->
     <SplitPane orientation="VERTICAL" VBox.vgrow="ALWAYS" dividerPositions="0.7">

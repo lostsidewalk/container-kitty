@@ -295,6 +295,25 @@ public class ContainerKittyController {
             }
         });
 
+        compositionCommentLabel.textProperty().addListener((obs, oldText, newText) -> {
+            Tooltip t = compositionCommentLabel.getTooltip();
+            if (t == null) {
+                t = new Tooltip(newText);
+                compositionCommentLabel.setTooltip(t);
+            } else {
+                t.setText(newText);
+            }
+        });
+        versionCommentLabel.textProperty().addListener((obs, oldText, newText) -> {
+            Tooltip t = versionCommentLabel.getTooltip();
+            if (t == null) {
+                t = new Tooltip(newText);
+                versionCommentLabel.setTooltip(t);
+            } else {
+                t.setText(newText);
+            }
+        });
+
         containerTable.getSelectionModel().setSelectionMode(SelectionMode.SINGLE);
 
         // Table bindings
