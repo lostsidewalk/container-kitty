@@ -1,91 +1,87 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
-<?import javafx.geometry.Insets?>
 <?import javafx.scene.control.*?>
 <?import javafx.scene.layout.*?>
+<?import javafx.geometry.Insets?>
 
-<VBox xmlns="http://javafx.com/javafx/21"
-      xmlns:fx="http://javafx.com/fxml"
-      fx:controller="container.kitty.ContainerKittyController"
-      spacing="10"
-      VBox.vgrow="ALWAYS">
+<BorderPane xmlns="http://javafx.com/javafx/21"
+            xmlns:fx="http://javafx.com/fxml"
+            fx:controller="container.kitty.ContainerKittyController">
 
-    <padding>
-        <Insets top="15" right="10" bottom="20" left="5"/>
-    </padding>
-
-    <!-- Toolbar for actions -->
-    <ToolBar>
-        <Button text="Refresh" onAction="#handleRefresh"/>
-        <Button text="Clear Logs" onAction="#handleClearLogs"/>
-        <!-- Spacer -->
-        <Region HBox.hgrow="ALWAYS"/>
-        <Button text="About" onAction="#handleAbout"/>
-    </ToolBar>
-
-    <GridPane hgap="10" alignment="CENTER_LEFT">
-        <!-- Three equal columns -->
-        <columnConstraints>
-            <ColumnConstraints percentWidth="33.3333"/>
-            <ColumnConstraints percentWidth="33.3333"/>
-            <ColumnConstraints percentWidth="33.3333"/>
-        </columnConstraints>
-
-        <!-- Composition column -->
-        <VBox GridPane.columnIndex="0" spacing="5" alignment="TOP_LEFT"
-              style="-fx-border-color: #CCCCCC; -fx-border-width: 1; -fx-padding: 15;">
-            <Label text="Composition:"/>
-            <ComboBox fx:id="compositionComboBox" promptText="Select composition" maxWidth="Infinity"/>
-            <StackPane prefHeight="48" maxHeight="48">
-                <Label fx:id="compositionCommentLabel" wrapText="true"
-                       maxWidth="Infinity"
-                       style="-fx-background-color: white; -fx-text-fill: black; -fx-padding: 5; -fx-overrun: ellipsis;"/>
-            </StackPane>
-        </VBox>
-
-        <!-- Version column -->
-        <VBox GridPane.columnIndex="1" spacing="5" alignment="TOP_LEFT"
-              style="-fx-border-color: #CCCCCC; -fx-border-width: 1; -fx-padding: 15;">
-            <Label text="Version:"/>
-            <ComboBox fx:id="versionComboBox" promptText="Select version" maxWidth="Infinity"/>
-            <StackPane prefHeight="48" maxHeight="48">
-                <Label fx:id="versionCommentLabel" wrapText="true"
-                       maxWidth="Infinity"
-                       style="-fx-background-color: white; -fx-text-fill: black; -fx-padding: 5; -fx-overrun: ellipsis;"/>
-            </StackPane>
-        </VBox>
-
-        <!-- Buttons column -->
-        <HBox GridPane.columnIndex="2" spacing="10" alignment="CENTER"
-              style="-fx-border-color: #CCCCCC; -fx-border-width: 1; -fx-padding: 15;">
+    <!-- Top Toolbar -->
+    <top>
+        <ToolBar>
+            <Button fx:id="startButton" text="Start"/>
+            <Button fx:id="stopAllButton" text="Stop All"/>
             <Region HBox.hgrow="ALWAYS"/>
-            <Button fx:id="startButton" text="Start" onAction="#handleStart" prefWidth="80"/>
-            <Button fx:id="stopAllButton" text="Stop All" onAction="#handleStopAll" prefWidth="80"/>
-            <Region HBox.hgrow="ALWAYS"/>
+            <Button text="Refresh" onAction="#handleRefresh"/>
+        </ToolBar>
+    </top>
+
+    <!-- Center -->
+    <center>
+        <SplitPane orientation="VERTICAL" dividerPositions="0.35">
+            <!-- Composition/Version Table -->
+            <VBox spacing="5" VBox.vgrow="ALWAYS">
+                <padding>
+                    <Insets top="10" right="10" bottom="10" left="10"/>
+                </padding>
+                <Label text="Select Composition / Version:"/>
+                <TableView fx:id="compositionVersionTable" VBox.vgrow="ALWAYS">
+                    <columns>
+                        <TableColumn fx:id="compositionColumn" text="Composition" prefWidth="200"/>
+                        <TableColumn fx:id="versionColumn" text="Version" prefWidth="120"/>
+                        <TableColumn fx:id="commentColumn" text="Comment" prefWidth="300"/>
+                    </columns>
+                </TableView>
+            </VBox>
+
+            <!-- Containers and Logs SplitPane -->
+            <SplitPane orientation="VERTICAL" dividerPositions="0.4">
+                <!-- Running Containers -->
+                <VBox spacing="5" VBox.vgrow="ALWAYS">
+                    <padding>
+                        <Insets top="10" right="10" bottom="10" left="10"/>
+                    </padding>
+                    <Label text="Running Containers:"/>
+                    <TableView fx:id="containerTable" VBox.vgrow="ALWAYS">
+                        <columns>
+                            <TableColumn fx:id="nameColumn" text="Name" prefWidth="150"/>
+                            <TableColumn fx:id="imageColumn" text="Image" prefWidth="250"/>
+                            <TableColumn fx:id="memUsageColumn" text="Memory" prefWidth="100"/>
+                            <TableColumn fx:id="statusColumn" text="Status" prefWidth="150"/>
+                        </columns>
+                    </TableView>
+                </VBox>
+
+                <!-- Logs -->
+                <VBox spacing="5" VBox.vgrow="ALWAYS">
+                    <padding>
+                        <Insets top="10" right="10" bottom="10" left="10"/>
+                    </padding>
+                    <Label text="Logs:"/>
+                    <TextArea fx:id="logArea"
+                              editable="false"
+                              wrapText="true"
+                              VBox.vgrow="ALWAYS"
+                              style="-fx-control-inner-background: black;
+                                     -fx-text-fill: lightgray;
+                                     -fx-font-family: monospace;"/>
+                </VBox>
+            </SplitPane>
+        </SplitPane>
+    </center>
+
+    <!-- Bottom: Status Bar -->
+    <bottom>
+        <HBox spacing="10">
+            <padding>
+                <Insets top="5" right="10" bottom="5" left="10"/>
+            </padding>
+            <Label fx:id="statusLabel"
+                   text="Status: Stopped"
+                   style="-fx-font-weight: bold; -fx-text-fill: gray;"/>
         </HBox>
-    </GridPane>
+    </bottom>
 
-    <!-- SplitPane for Containers and Logs -->
-    <SplitPane orientation="VERTICAL" VBox.vgrow="ALWAYS" dividerPositions="0.7">
-
-        <!-- Container Table -->
-        <TableView fx:id="containerTable" VBox.vgrow="ALWAYS">
-            <columns>
-                <TableColumn fx:id="nameColumn" text="Container Name" prefWidth="200"/>
-                <TableColumn fx:id="imageColumn" text="Image" prefWidth="300"/>
-                <TableColumn fx:id="memUsageColumn" text="Memory Usage" prefWidth="100"/>
-                <TableColumn fx:id="statusColumn" text="Status" prefWidth="200"/>
-            </columns>
-        </TableView>
-
-        <!-- Logs -->
-        <VBox spacing="5" VBox.vgrow="ALWAYS">
-            <Label text="Logs:"/>
-            <TextArea fx:id="logArea" editable="false" wrapText="true" VBox.vgrow="ALWAYS"
-                      style="-fx-control-inner-background: black; -fx-text-fill: gray; -fx-font-family: monospace;"/>
-            <!-- Status Label -->
-            <Label fx:id="statusLabel" text="Status: Unknown" style="-fx-font-weight: bold; -fx-text-fill: gray;" />
-        </VBox>
-
-    </SplitPane>
-</VBox>
+</BorderPane>

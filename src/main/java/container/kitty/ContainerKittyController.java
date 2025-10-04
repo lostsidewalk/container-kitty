@@ -3,6 +3,7 @@ package container.kitty;
 import javafx.animation.KeyFrame;
 import javafx.animation.Timeline;
 import javafx.application.Platform;
+import javafx.beans.property.SimpleStringProperty;
 import javafx.fxml.FXML;
 import javafx.scene.control.*;
 import javafx.scene.image.ImageView;
@@ -11,25 +12,35 @@ import javafx.scene.layout.VBox;
 import javafx.util.Duration;
 
 import java.io.*;
-import java.net.HttpURLConnection;
-import java.net.URL;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 
+/**
+ * ContainerKittyController
+ */
+@SuppressWarnings({
+        "AccessOfSystemProperties",
+        "ClassWithoutLogger",
+        "FieldNotUsedInToString",
+        "FieldCanBeLocal",
+        "MagicNumber",
+        "UseOfProcessBuilder",
+        "OverlyLongMethod",
+        "StaticFieldReferencedViaSubclass",
+        "StandardVariableNames"
+})
 public class ContainerKittyController {
 
     // Remote URL for production
     private static final String VERSIONS_JSON_URL =
             "https://gitlab.com/<namespace>/<repo>/-/raw/main/docker/compose/versions.json";
-
-    // Dev resource path (classpath)
-    private static final String DEV_VERSIONS_JSON_RESOURCE = "dev-versions.json"; // dev-versions.json
 
     private static final String DOCKER_CMD = "docker";
     private static final String COMPOSE_CMD = "compose";
@@ -37,13 +48,19 @@ public class ContainerKittyController {
     private static final String DOWN_CMD = "down";
 
     private static class VersionsManifest {
-        public List<Composition> compositions;
-        public List<Version> versions;
+        List<Composition> compositions;
+        List<Version> versions;
+
+        @Override
+        public final String toString() {
+            return "VersionsManifest{" +
+                    "compositions=" + compositions +
+                    ", versions=" + versions +
+                    '}';
+        }
     }
 
     @FXML private Label statusLabel;
-    @FXML private ComboBox<Version> versionComboBox;
-    @FXML private ComboBox<Composition> compositionComboBox;
     @FXML private TextArea logArea;
     @FXML private TableView<ContainerInfo> containerTable;
     @FXML private TableColumn<ContainerInfo, String> nameColumn;
@@ -52,8 +69,10 @@ public class ContainerKittyController {
     @FXML private TableColumn<ContainerInfo, String> statusColumn;
     @FXML private Button startButton;
     @FXML private Button stopAllButton;
-    @FXML private Label compositionCommentLabel;
-    @FXML private Label versionCommentLabel;
+    @FXML private TableView<CompositionVersion> compositionVersionTable;
+    @FXML private TableColumn<CompositionVersion, String> compositionColumn;
+    @FXML private TableColumn<CompositionVersion, String> versionColumn;
+    @FXML private TableColumn<CompositionVersion, String> commentColumn;
 
     // local cache of lists
     private List<Composition> availableCompositions = List.of();
@@ -116,14 +135,14 @@ public class ContainerKittyController {
                 imageView.setFitHeight(64);
                 alert.setGraphic(imageView);
             }
-        } catch (Exception e) {
+        } catch (RuntimeException e) {
             appendLog("Failed to load About logo: " + e.getMessage());
         }
 
         alert.showAndWait();
     }
 
-    private String detectDockerPath() {
+    private static String detectDockerPath() {
         String dockerPath = "Not found";
 
         try {
@@ -139,7 +158,7 @@ public class ContainerKittyController {
             ProcessBuilder pb = new ProcessBuilder(cmd);
             Process process = pb.start();
 
-            try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
+            try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
                 String line = reader.readLine();
                 if (line != null && !line.isEmpty()) {
                     dockerPath = line;
@@ -162,8 +181,14 @@ public class ContainerKittyController {
 
     @FXML
     private void handleStart() {
-        Composition composition = compositionComboBox.getValue();
-        Version version = versionComboBox.getValue();
+        CompositionVersion selected = compositionVersionTable.getSelectionModel().getSelectedItem();
+        if (selected == null) {
+            showError("No composition/version selected.");
+            return;
+        }
+        Composition composition = selected.getComposition();
+        Version version = selected.getVersion();
+
 
         if (composition == null) {
             showError("No composition selected.");
@@ -176,17 +201,32 @@ public class ContainerKittyController {
 
         runCommandAsync(() -> {
             try {
-                File composeFile = downloadComposeFile(composition.getName(), version.getIdent());
+                File composeFile = downloadComposeFile(composition.getName());
                 if (composeFile == null) {
-                    String msg = "Failed to download compose file for " + composition + " " + version;
+                    String msg = "Failed to download compose file for " + composition;
                     appendLog("ERROR: " + msg);
                     showError(msg);
                     return;
                 }
 
-                String[] cmd = { "docker", "compose", "-f", composeFile.getAbsolutePath(), "up", "-d" };
+                // Write .env file with IMAGE_TAG variable
+                File envFile = new File(tempComposeDir, ".env");
+                try (FileWriter fw = new FileWriter(envFile, StandardCharsets.UTF_8)) {
+                    fw.write("IMAGE_TAG=" + version.getIdent() + "\n");
+                }
+                appendLog("Wrote environment file with IMAGE_TAG=" + version.getIdent());
+
+                // Run docker compose with the env file
+                String[] cmd = {
+                        DOCKER_CMD, COMPOSE_CMD,
+                        "--env-file", envFile.getAbsolutePath(),
+                        "-f", composeFile.getAbsolutePath(),
+                        UP_CMD, "-d"
+                };
                 _runCommand(cmd);
+
                 appendLog("Started " + composition + " version " + version);
+                activeComposeFile = composeFile;
             } catch (IOException e) {
                 String msg = "Error starting composition: " + e.getMessage();
                 appendLog("ERROR: " + msg);
@@ -212,41 +252,32 @@ public class ContainerKittyController {
         });
     }
 
+    @SuppressWarnings("OverlyComplexBooleanExpression")
     @FXML
     private void handleRefresh() {
         runCommandAsync(() -> {
             try {
                 VersionsManifest manifest = fetchVersionManifest();
-                if (manifest == null
-                        || manifest.compositions == null || manifest.compositions.isEmpty()
-                        || manifest.versions == null || manifest.versions.isEmpty()) {
+                if (manifest == null ||
+                        manifest.compositions == null || manifest.compositions.isEmpty() ||
+                        manifest.versions == null || manifest.versions.isEmpty()) {
                     appendLog("No compositions or versions available from server.");
                     showError("No compositions or versions available from server.");
                     return;
                 }
 
-                compositionCommentMap.clear();
-                versionCommentMap.clear();
-
-                for (Composition comp : manifest.compositions) {
-                    compositionComboBox.getItems().add(comp);
-                    compositionCommentMap.put(comp.getName(), comp.getComment());
-                }
-
-                for (Version ver : manifest.versions) {
-                    versionComboBox.getItems().add(ver);
-                    versionCommentMap.put(ver.getIdent(), ver.getComment());
-                }
-
                 availableCompositions = manifest.compositions;
                 availableVersions = manifest.versions;
 
-                Platform.runLater(() -> {
-                    compositionComboBox.getItems().setAll(availableCompositions);
-                    compositionComboBox.getSelectionModel().selectFirst();
+                // Create all composition-version pairs
+                List<CompositionVersion> combined = availableCompositions.stream()
+                        .flatMap(comp -> availableVersions.stream()
+                                .map(ver -> new CompositionVersion(comp, ver)))
+                        .toList();
 
-                    versionComboBox.getItems().setAll(availableVersions);
-                    versionComboBox.getSelectionModel().selectFirst();
+                Platform.runLater(() -> {
+                    compositionVersionTable.getItems().setAll(combined);
+                    compositionVersionTable.getSelectionModel().clearSelection();
                 });
 
                 appendLog("Refreshed compositions and versions.");
@@ -259,59 +290,28 @@ public class ContainerKittyController {
         });
     }
 
-    private final Map<String, String> compositionCommentMap = new HashMap<>();
-    private final Map<String, String> versionCommentMap = new HashMap<>();
-
     @FXML
-    public void initialize() {
+    public final void initialize() {
         // Disable controls initially
         startButton.setDisable(true);
         stopAllButton.setDisable(true);
 
         memUsageColumn.setCellValueFactory(data -> data.getValue().memUsageProperty());
 
-        // Enable Start/Stop only when both composition and version are selected
-        Runnable updateControls = () -> {
-            boolean enabled = compositionComboBox.getValue() != null && versionComboBox.getValue() != null;
+        compositionColumn.setCellValueFactory(data ->
+                new SimpleStringProperty(data.getValue().getCompositionName()));
+        versionColumn.setCellValueFactory(data ->
+                new SimpleStringProperty(data.getValue().getVersionIdent()));
+        commentColumn.setCellValueFactory(data ->
+                new SimpleStringProperty(data.getValue().getCompositionComment()));
+
+        compositionVersionTable.getSelectionModel().setSelectionMode(SelectionMode.SINGLE);
+
+        // Enable Start/Stop when something is selected
+        compositionVersionTable.getSelectionModel().selectedItemProperty().addListener((obs, oldV, newV) -> {
+            boolean enabled = newV != null;
             startButton.setDisable(!enabled);
             stopAllButton.setDisable(!enabled);
-        };
-        compositionComboBox.valueProperty().addListener((obs, oldV, newV) -> updateControls.run());
-        versionComboBox.valueProperty().addListener((obs, oldV, newV) -> updateControls.run());
-
-        compositionComboBox.getSelectionModel().selectedItemProperty().addListener((obs, oldVal, newVal) -> {
-            if (newVal != null) {
-                String comment = compositionCommentMap.get(newVal.getName()); // Map<String,String>
-                compositionCommentLabel.setText(comment != null ? comment : "");
-                updateControls.run();
-            }
-        });
-
-        versionComboBox.getSelectionModel().selectedItemProperty().addListener((obs, oldVal, newVal) -> {
-            if (newVal != null) {
-                String comment = versionCommentMap.get(newVal.getIdent()); // Map<String,String>
-                versionCommentLabel.setText(comment != null ? comment : "");
-                updateControls.run();
-            }
-        });
-
-        compositionCommentLabel.textProperty().addListener((obs, oldText, newText) -> {
-            Tooltip t = compositionCommentLabel.getTooltip();
-            if (t == null) {
-                t = new Tooltip(newText);
-                compositionCommentLabel.setTooltip(t);
-            } else {
-                t.setText(newText);
-            }
-        });
-        versionCommentLabel.textProperty().addListener((obs, oldText, newText) -> {
-            Tooltip t = versionCommentLabel.getTooltip();
-            if (t == null) {
-                t = new Tooltip(newText);
-                versionCommentLabel.setTooltip(t);
-            } else {
-                t.setText(newText);
-            }
         });
 
         containerTable.getSelectionModel().setSelectionMode(SelectionMode.SINGLE);
@@ -361,62 +361,103 @@ public class ContainerKittyController {
         handleRefresh();
     }
 
-    /** Fetch available compositions and versions (remote or dev resource in dev mode) */
+    @SuppressWarnings("OverlyBroadThrowsClause")
     private VersionsManifest fetchVersionManifest() throws IOException {
-        InputStream in = ContainerKittyController.class.getResourceAsStream(DEV_VERSIONS_JSON_RESOURCE);
-        if (in != null) {
-            appendLog("Loading versions.json from dev resource: " + DEV_VERSIONS_JSON_RESOURCE);
-        } else {
-            appendLog("Loading versions.json from remote: " + VERSIONS_JSON_URL);
-            URL url = new URL(VERSIONS_JSON_URL);
-            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-            conn.setRequestMethod("GET");
-            if (conn.getResponseCode() != 200) {
-                throw new IOException("HTTP " + conn.getResponseCode());
-            }
-            in = conn.getInputStream();
-        }
-        InputStream inputStream = in;
+        appendLog("Fetching versions.json via git show...");
+        String json = fetchFileFromGit("docker/compose/versions.json");
+        ObjectMapper mapper = new ObjectMapper();
+        return mapper.readValue(json, VersionsManifest.class);
+    }
 
-        try (inputStream) {
-            ObjectMapper mapper = new ObjectMapper();
-            return mapper.readValue(in, VersionsManifest.class);
+    private File downloadComposeFile(String composition) throws IOException {
+        appendLog("Fetching compose file via git show...");
+        String yaml = fetchFileFromGit("docker/compose/docker-compose-" + composition + ".yml");
+        File outFile = new File(tempComposeDir, "docker-compose-" + composition + ".yml");
+        Files.writeString(outFile.toPath(), yaml);
+        appendLog("Fetched compose file: " + outFile.getName());
+        return outFile;
+    }
+
+    private static final String REPO_URL = "git@gitlab.com:<namespace>/<repo>.git";
+    private static final String GIT_BRANCH = "main";
+
+    private String fetchFileFromGit(String pathInRepo) throws IOException {
+        File tempDir = Files.createTempDirectory("ck_git_fetch").toFile();
+
+        // Initialize empty git repo
+        runAndLogCommand(new String[]{"git", "init"}, tempDir, "git init failed");
+        runAndLogCommand(new String[]{"git", "remote", "add", "origin", REPO_URL}, tempDir, "git remote add failed");
+
+        // Fetch just the branch head (no checkout)
+        runAndLogCommand(new String[]{"git", "fetch", "--depth", "1", "origin", GIT_BRANCH}, tempDir, "git fetch failed");
+
+        // Show the single file content
+        ProcessBuilder pb = new ProcessBuilder("git", "show", GIT_BRANCH + ":" + pathInRepo);
+        pb.directory(tempDir);
+        pb.redirectErrorStream(true);
+        Process process = pb.start();
+
+        @SuppressWarnings("StringBufferWithoutInitialCapacity") StringBuilder sb = new StringBuilder();
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
+            String line;
+            //noinspection NestedAssignment,MethodCallInLoopCondition
+            while ((line = reader.readLine()) != null) {
+                sb.append(line).append("\n");
+            }
+        }
+
+        try {
+            int exit = process.waitFor();
+            if (exit != 0) {
+                throw new IOException("git show failed for " + pathInRepo + " (exit=" + exit + ")");
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IOException("git show interrupted for " + pathInRepo, e);
+        } finally {
+            deleteRecursive(tempDir);
+        }
+
+        return sb.toString();
+    }
+
+    private void runAndLogCommand(String[] command, File directory, String errorMessage) throws IOException {
+        appendLog(String.join(" ", command));
+        ProcessBuilder pb = new ProcessBuilder(command);
+        pb.directory(directory);
+        pb.redirectErrorStream(true);
+
+        Process process = pb.start();
+        @SuppressWarnings("StringBufferWithoutInitialCapacity") StringBuilder output = new StringBuilder();
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
+            String line;
+            //noinspection NestedAssignment,MethodCallInLoopCondition
+            while ((line = reader.readLine()) != null) {
+                output.append(line).append('\n');
+            }
+        }
+
+        try {
+            int exitCode = process.waitFor();
+            if (exitCode != 0) {
+                appendLog(errorMessage + ": " + output);
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IOException(errorMessage + " (interrupted)", e);
         }
     }
 
-    /** Downloads a compose file for the given composition+version to temp directory */
-    private File downloadComposeFile(String composition, String version) throws IOException {
-        // clean old .yml files optionally
-        File[] oldFiles = tempComposeDir.listFiles((d, name) -> name.endsWith(".yml"));
-        if (oldFiles != null) {
-            for (File f : oldFiles) f.delete();
-        }
-
-        // MUST match naming convention in repo
-        String fileName = String.format("docker-compose-%s-%s.yml", composition, version);
-        String urlStr = VERSIONS_JSON_URL.replace("versions.json", fileName);
-
-        URL url = new URL(urlStr);
-        HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-        conn.setRequestMethod("GET");
-        conn.setConnectTimeout(5000);
-        conn.setReadTimeout(5000);
-
-        if (conn.getResponseCode() != 200) {
-            appendLog("Failed to download " + fileName + ": HTTP " + conn.getResponseCode());
-            return null;
-        }
-
-        File outFile = new File(tempComposeDir, fileName);
-        try (InputStream in = conn.getInputStream();
-             FileOutputStream fos = new FileOutputStream(outFile)) {
-            byte[] buf = new byte[8192];
-            int len;
-            while ((len = in.read(buf)) > 0) {
-                fos.write(buf, 0, len);
+    private static void deleteRecursive(File file) {
+        if (file == null || !file.exists()) return;
+        File[] files = file.listFiles();
+        if (files != null) {
+            for (File f : files) {
+                deleteRecursive(f);
             }
         }
-        return outFile;
+        //noinspection ResultOfMethodCallIgnored
+        file.delete();
     }
 
     /** Updates status label with running containers count and tooltip for non-running containers */
@@ -453,7 +494,9 @@ public class ContainerKittyController {
             statusLabel.setText(statusText);
             statusLabel.setStyle(style);
 
-            if (!containerLabels.isEmpty()) {
+            if (containerLabels.isEmpty()) {
+                statusLabel.setTooltip(null);
+            } else {
                 VBox tooltipBox = new VBox(2);
                 tooltipBox.getChildren().addAll(containerLabels);
 
@@ -466,12 +509,11 @@ public class ContainerKittyController {
                 tooltip.setGraphic(scrollPane);
                 tooltip.setText(""); // no text, only graphic
                 statusLabel.setTooltip(tooltip);
-            } else {
-                statusLabel.setTooltip(null);
             }
         });
     }
 
+    @SuppressWarnings("OverlyNestedMethod")
     private void refreshContainers() {
         // Remember currently selected container name
         ContainerInfo selected = containerTable.getSelectionModel().getSelectedItem();
@@ -483,8 +525,9 @@ public class ContainerKittyController {
             ProcessBuilder pb = new ProcessBuilder(DOCKER_CMD, "ps", "--format", "{{.Names}}|{{.Image}}|{{.Status}}");
             Process process = pb.start();
 
-            try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
+            try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
                 String line;
+                //noinspection NestedAssignment,MethodCallInLoopCondition
                 while ((line = reader.readLine()) != null) {
                     String[] parts = line.split("\\|");
                     if (parts.length == 3) {
@@ -503,24 +546,22 @@ public class ContainerKittyController {
         }
     }
 
-    /** Runs a Runnable asynchronously with control disabling */
+    private final ExecutorService executor = Executors.newSingleThreadExecutor();
+
     private void runCommandAsync(Runnable task) {
-        new Thread(() -> {
-            setControlsDisabled(true);
+        setControlsDisabled(true);
+        executor.submit(() -> {
             try {
                 task.run();
             } finally {
                 setControlsDisabled(false);
             }
-        }).start();
+        });
     }
 
     /** Enables/disables controls on FX thread */
     private void setControlsDisabled(boolean disabled) {
-        Platform.runLater(() -> {
-            versionComboBox.setDisable(disabled);
-            containerTable.setDisable(disabled);
-        });
+        Platform.runLater(() -> containerTable.setDisable(disabled));
     }
 
     /** Internal command runner */
@@ -530,8 +571,9 @@ public class ContainerKittyController {
             pb.redirectErrorStream(true);
             Process process = pb.start();
 
-            try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
+            try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
                 String line;
+                //noinspection NestedAssignment,MethodCallInLoopCondition
                 while ((line = reader.readLine()) != null) {
                     appendLog(line);
                 }
@@ -547,7 +589,7 @@ public class ContainerKittyController {
     }
 
     /** Shows an error dialog */
-    private void showError(String message) {
+    private static void showError(String message) {
         Platform.runLater(() -> {
             Alert alert = new Alert(Alert.AlertType.ERROR, message, ButtonType.OK);
             alert.showAndWait();
@@ -561,5 +603,10 @@ public class ContainerKittyController {
             logArea.appendText(timestamp + " - " + message + "\n");
             logArea.setScrollTop(Double.MAX_VALUE);
         });
+    }
+
+    @Override
+    public final String toString() {
+        return "ContainerKittyController{}";
     }
 }
