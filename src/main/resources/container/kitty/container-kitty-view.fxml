@@ -11,17 +11,18 @@
     <!-- Top Toolbar -->
     <top>
         <ToolBar>
-            <Button fx:id="startButton" text="Start"/>
-            <Button fx:id="stopAllButton" text="Stop All"/>
+            <Button fx:id="startButton" text="Start" onAction="#handleStart"/>
+            <Button fx:id="stopAllButton" text="Stop All" onAction="#handleStopAll"/>
             <Region HBox.hgrow="ALWAYS"/>
             <Button text="Refresh" onAction="#handleRefresh"/>
+            <Button text="About" onAction="#handleAbout"/>
         </ToolBar>
     </top>
 
-    <!-- Center -->
+    <!-- Center: Three-pane SplitPane -->
     <center>
-        <SplitPane orientation="VERTICAL" dividerPositions="0.35">
-            <!-- Composition/Version Table -->
+        <SplitPane orientation="VERTICAL" dividerPositions="0.33,0.66">
+            <!-- Composition Table -->
             <VBox spacing="5" VBox.vgrow="ALWAYS">
                 <padding>
                     <Insets top="10" right="10" bottom="10" left="10"/>
@@ -36,39 +37,36 @@
                 </TableView>
             </VBox>
 
-            <!-- Containers and Logs SplitPane -->
-            <SplitPane orientation="VERTICAL" dividerPositions="0.4">
-                <!-- Running Containers -->
-                <VBox spacing="5" VBox.vgrow="ALWAYS">
-                    <padding>
-                        <Insets top="10" right="10" bottom="10" left="10"/>
-                    </padding>
-                    <Label text="Running Containers:"/>
-                    <TableView fx:id="containerTable" VBox.vgrow="ALWAYS">
-                        <columns>
-                            <TableColumn fx:id="nameColumn" text="Name" prefWidth="150"/>
-                            <TableColumn fx:id="imageColumn" text="Image" prefWidth="250"/>
-                            <TableColumn fx:id="memUsageColumn" text="Memory" prefWidth="100"/>
-                            <TableColumn fx:id="statusColumn" text="Status" prefWidth="150"/>
-                        </columns>
-                    </TableView>
-                </VBox>
+            <!-- Containers Table -->
+            <VBox spacing="5" VBox.vgrow="ALWAYS">
+                <padding>
+                    <Insets top="10" right="10" bottom="10" left="10"/>
+                </padding>
+                <Label text="Running Containers:"/>
+                <TableView fx:id="containerTable" VBox.vgrow="ALWAYS">
+                    <columns>
+                        <TableColumn fx:id="nameColumn" text="Name" prefWidth="150"/>
+                        <TableColumn fx:id="imageColumn" text="Image" prefWidth="250"/>
+                        <TableColumn fx:id="memUsageColumn" text="Memory" prefWidth="100"/>
+                        <TableColumn fx:id="statusColumn" text="Status" prefWidth="150"/>
+                    </columns>
+                </TableView>
+            </VBox>
 
-                <!-- Logs -->
-                <VBox spacing="5" VBox.vgrow="ALWAYS">
-                    <padding>
-                        <Insets top="10" right="10" bottom="10" left="10"/>
-                    </padding>
-                    <Label text="Logs:"/>
-                    <TextArea fx:id="logArea"
-                              editable="false"
-                              wrapText="true"
-                              VBox.vgrow="ALWAYS"
-                              style="-fx-control-inner-background: black;
-                                     -fx-text-fill: lightgray;
-                                     -fx-font-family: monospace;"/>
-                </VBox>
-            </SplitPane>
+            <!-- Logs -->
+            <VBox spacing="5" VBox.vgrow="ALWAYS">
+                <padding>
+                    <Insets top="10" right="10" bottom="10" left="10"/>
+                </padding>
+                <Label text="Logs:"/>
+                <TextArea fx:id="logArea"
+                          editable="false"
+                          wrapText="true"
+                          VBox.vgrow="ALWAYS"
+                          style="-fx-control-inner-background: black;
+                                 -fx-text-fill: lightgray;
+                                 -fx-font-family: monospace;"/>
+            </VBox>
         </SplitPane>
     </center>
 

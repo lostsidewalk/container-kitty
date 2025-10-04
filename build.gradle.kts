@@ -52,6 +52,16 @@ tasks.named<com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar>("shadowJ
     archiveVersion.set(project.version.toString())
     mergeServiceFiles()
     isZip64 = true
+
+    // include JavaFX dependencies
+    dependencies {
+        include(dependency("org.openjfx:.*"))
+    }
+
+    // Set main class in manifest
+    manifest {
+        attributes(mapOf("Main-Class" to "container.kitty.ContainerKittyApplication"))
+    }
 }
 
 tasks.named("build") {

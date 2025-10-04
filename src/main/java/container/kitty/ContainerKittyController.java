@@ -47,19 +47,6 @@ public class ContainerKittyController {
     private static final String UP_CMD = "up";
     private static final String DOWN_CMD = "down";
 
-    private static class VersionsManifest {
-        List<Composition> compositions;
-        List<Version> versions;
-
-        @Override
-        public final String toString() {
-            return "VersionsManifest{" +
-                    "compositions=" + compositions +
-                    ", versions=" + versions +
-                    '}';
-        }
-    }
-
     @FXML private Label statusLabel;
     @FXML private TextArea logArea;
     @FXML private TableView<ContainerInfo> containerTable;
@@ -361,12 +348,39 @@ public class ContainerKittyController {
         handleRefresh();
     }
 
-    @SuppressWarnings("OverlyBroadThrowsClause")
-    private VersionsManifest fetchVersionManifest() throws IOException {
-        appendLog("Fetching versions.json via git show...");
-        String json = fetchFileFromGit("docker/compose/versions.json");
+    private VersionsManifest fetchVersionManifest(String json) throws IOException {
         ObjectMapper mapper = new ObjectMapper();
-        return mapper.readValue(json, VersionsManifest.class);
+
+        // Deserialize into simple POJO
+        VersionsManifestData data = mapper.readValue(json, VersionsManifestData.class);
+
+        // Convert to JavaFX-friendly classes
+        List<Composition> compositions = data.compositions.stream()
+                .map(d -> new Composition(d.name, d.comment))
+                .toList();
+
+        List<Version> versions = data.versions.stream()
+                .map(d -> new Version(d.ident, d.comment))
+                .toList();
+
+        return new VersionsManifest(compositions, versions);
+    }
+
+    private VersionsManifest fetchVersionManifest() throws IOException {
+        String json;
+
+        if (ContainerKittyApplication.DEV_MODE) {
+            appendLog("DEV mode enabled: using dev-versions.json from resources");
+            try (InputStream in = getClass().getResourceAsStream("/dev-versions.json")) {
+                if (in == null) throw new IOException("dev-versions.json not found in resources");
+                json = new String(in.readAllBytes(), StandardCharsets.UTF_8);
+            }
+        } else {
+            appendLog("Fetching versions.json via git...");
+            json = fetchFileFromGit("docker/compose/versions.json");
+        }
+
+        return fetchVersionManifest(json);
     }
 
     private File downloadComposeFile(String composition) throws IOException {
@@ -608,5 +622,11 @@ public class ContainerKittyController {
     @Override
     public final String toString() {
         return "ContainerKittyController{}";
+    }
+
+    private boolean devMode;
+
+    void setDevMode(boolean devMode) {
+        this.devMode = devMode;
     }
 }
