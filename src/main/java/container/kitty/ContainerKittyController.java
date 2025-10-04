@@ -14,8 +14,11 @@ import javafx.util.Duration;
 import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.StandardCopyOption;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -198,18 +201,16 @@ public class ContainerKittyController {
 
                 // Write .env file with IMAGE_TAG variable
                 File envFile = new File(tempComposeDir, ".env");
-                try (FileWriter fw = new FileWriter(envFile, StandardCharsets.UTF_8)) {
-                    fw.write("IMAGE_TAG=" + version.getIdent() + "\n");
-                }
+                Files.writeString(envFile.toPath(), "IMAGE_TAG=" + version.getIdent() + "\n", StandardCharsets.UTF_8);
                 appendLog("Wrote environment file with IMAGE_TAG=" + version.getIdent());
 
                 // Run docker compose with the env file
-                String[] cmd = {
-                        DOCKER_CMD, COMPOSE_CMD,
+                String[] cmd = dockerCmd(
+                        COMPOSE_CMD,
                         "--env-file", envFile.getAbsolutePath(),
                         "-f", composeFile.getAbsolutePath(),
                         UP_CMD, "-d"
-                };
+                );
                 _runCommand(cmd);
 
                 appendLog("Started " + composition + " version " + version);
@@ -226,7 +227,7 @@ public class ContainerKittyController {
     private void handleStopAll() {
         runCommandAsync(() -> {
             if (activeComposeFile != null && activeComposeFile.exists()) {
-                String[] cmd = {DOCKER_CMD, COMPOSE_CMD, "-f", activeComposeFile.getAbsolutePath(), DOWN_CMD};
+                String[] cmd = dockerCmd(COMPOSE_CMD, "-f", activeComposeFile.getAbsolutePath(), DOWN_CMD);
                 _runCommand(cmd);
                 appendLog("Took down entire composition.");
                 activeComposeFile = null;
@@ -277,6 +278,14 @@ public class ContainerKittyController {
         });
     }
 
+    private String[] dockerCmd(String... args) {
+        List<String> cmd = new ArrayList<>();
+        cmd.add(DOCKER_CMD);
+        cmd.addAll(Arrays.asList(args));
+
+        return cmd.toArray(new String[0]);
+    }
+
     @FXML
     public final void initialize() {
         // Disable controls initially
@@ -291,6 +300,15 @@ public class ContainerKittyController {
                 new SimpleStringProperty(data.getValue().getVersionIdent()));
         commentColumn.setCellValueFactory(data ->
                 new SimpleStringProperty(data.getValue().getCompositionComment()));
+
+        compositionColumn.setPrefWidth(200);
+        versionColumn.setPrefWidth(120);
+        commentColumn.prefWidthProperty().bind(
+                compositionVersionTable.widthProperty()
+                        .subtract(compositionColumn.widthProperty())
+                        .subtract(versionColumn.widthProperty())
+                        .subtract(35) // small adjustment for scrollbar/margins
+        );
 
         compositionVersionTable.getSelectionModel().setSelectionMode(SelectionMode.SINGLE);
 
@@ -383,13 +401,41 @@ public class ContainerKittyController {
         return fetchVersionManifest(json);
     }
 
+    /** Downloads (or loads from classpath in dev mode) the compose file for the given composition. */
     private File downloadComposeFile(String composition) throws IOException {
-        appendLog("Fetching compose file via git show...");
-        String yaml = fetchFileFromGit("docker/compose/docker-compose-" + composition + ".yml");
-        File outFile = new File(tempComposeDir, "docker-compose-" + composition + ".yml");
-        Files.writeString(outFile.toPath(), yaml);
-        appendLog("Fetched compose file: " + outFile.getName());
-        return outFile;
+        // clean old .yml files optionally
+        File[] oldFiles = tempComposeDir.listFiles((d, name) -> name.endsWith(".yml"));
+        if (oldFiles != null) {
+            for (File f : oldFiles) f.delete();
+        }
+
+        String fileName = String.format("docker-compose-%s.yml", composition);
+        File outFile = new File(tempComposeDir, fileName);
+
+        if (ContainerKittyApplication.DEV_MODE) {
+            // In dev mode: load compose from classpath resource
+            String resourcePath = "/docker/compose/" + fileName;
+            appendLog("DEV mode: loading compose from classpath: " + resourcePath);
+
+            try (InputStream in = getClass().getResourceAsStream(resourcePath)) {
+                if (in == null) {
+                    appendLog("Compose resource not found in classpath: " + resourcePath);
+                    throw new IOException("Compose resource not found in classpath: " + resourcePath);
+                }
+                // Copy resource stream into temporary file for docker-compose to read
+                Files.copy(in, outFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
+            }
+
+            appendLog("Loaded compose file from resources: " + outFile.getAbsolutePath());
+            return outFile;
+        } else {
+            // Production: fetch the compose file from git
+            appendLog("Fetching compose file via git show...");
+            String yaml = fetchFileFromGit("docker/compose/" + fileName);
+            Files.writeString(outFile.toPath(), yaml, StandardCharsets.UTF_8);
+            appendLog("Fetched compose file: " + outFile.getName());
+            return outFile;
+        }
     }
 
     private static final String REPO_URL = "git@gitlab.com:<namespace>/<repo>.git";
@@ -583,8 +629,10 @@ public class ContainerKittyController {
     /** Internal command runner */
     private void _runCommand(String[] command) {
         try {
+            appendLog("Command: " + Arrays.asList(command));
             ProcessBuilder pb = new ProcessBuilder(command);
             pb.redirectErrorStream(true);
+            pb.environment().put("BUILDKIT_PROGRESS", "plain");
             Process process = pb.start();
 
             try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
