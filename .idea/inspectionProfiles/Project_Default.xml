@@ -2347,6 +2347,19 @@
           <option value="InnerClassOfInterface" />
           <option value="InterfaceNeverImplemented" />
           <option value="ProhibitedExceptionDeclared" />
+          <option value="ClassWithoutLogger" />
+          <option value="FieldNotUsedInToString" />
+          <option value="FieldCanBeLocal" />
+          <option value="MagicNumber" />
+          <option value="UseOfProcessBuilder" />
+          <option value="NestedAssignment" />
+          <option value="ResultOfMethodCallIgnored" />
+          <option value="OverlyNestedMethod" />
+          <option value="OverlyLongMethod" />
+          <option value="StaticFieldReferencedViaSubclass" />
+          <option value="OverlyComplexBooleanExpression" />
+          <option value="StringBufferWithoutInitialCapacity" />
+          <option value="StandardVariableNames" />
         </list>
       </option>
     </inspection_tool>
