@@ -1,6 +1,7 @@
 package container.kitty;
 
 import javafx.application.Application;
+import javafx.application.Platform;
 import javafx.fxml.FXMLLoader;
 import javafx.scene.Parent;
 import javafx.scene.Scene;
@@ -19,6 +20,7 @@ public class ContainerKittyApplication extends Application {
         Parent root = loader.load();
 
         Scene scene = new Scene(root);
+
         primaryStage.setTitle("container-kitty");
         primaryStage.setScene(scene);
 
@@ -29,6 +31,15 @@ public class ContainerKittyApplication extends Application {
         // Optional: let it be resizable
         primaryStage.setMinWidth(600);
         primaryStage.setMinHeight(500);
+
+        // Set proper close behavior
+        primaryStage.setOnCloseRequest(event -> {
+            ContainerKittyController controller = loader.getController();
+            controller.shutdown();
+            Platform.exit();
+            System.exit(0);
+        });
+
         primaryStage.show();
     }
 }

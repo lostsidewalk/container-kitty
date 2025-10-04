@@ -563,14 +563,16 @@ public class ContainerKittyController {
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
 
     private void runCommandAsync(Runnable task) {
-        setControlsDisabled(true);
-        executor.submit(() -> {
+        Thread t = new Thread(() -> {
+            setControlsDisabled(true);
             try {
                 task.run();
             } finally {
                 setControlsDisabled(false);
             }
         });
+        t.setDaemon(true);
+        t.start();
     }
 
     /** Enables/disables controls on FX thread */
@@ -624,9 +626,10 @@ public class ContainerKittyController {
         return "ContainerKittyController{}";
     }
 
-    private boolean devMode;
-
-    void setDevMode(boolean devMode) {
-        this.devMode = devMode;
+    public void shutdown() {
+        if (statusUpdater != null) {
+            statusUpdater.stop();
+        }
+        // Optional: stop any other background threads if needed
     }
 }
