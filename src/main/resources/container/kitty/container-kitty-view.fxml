@@ -47,7 +47,7 @@
                     <columns>
                         <TableColumn fx:id="nameColumn" text="Name" prefWidth="150"/>
                         <TableColumn fx:id="imageColumn" text="Image" prefWidth="250"/>
-                        <TableColumn fx:id="memUsageColumn" text="Memory" prefWidth="100"/>
+                        <TableColumn fx:id="projectColumn" text="Project" prefWidth="150"/>
                         <TableColumn fx:id="statusColumn" text="Status" prefWidth="150"/>
                     </columns>
                 </TableView>

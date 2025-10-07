@@ -7,12 +7,14 @@ public class ContainerInfo {
     private final StringProperty name;
     private final StringProperty image;
     private final StringProperty status;
+    private final StringProperty project;
     private final StringProperty memUsage;
 
-    public ContainerInfo(String name, String image, String status, String memUsage) {
+    public ContainerInfo(String name, String image, String status, String project, String memUsage) {
         this.name = new SimpleStringProperty(name);
         this.image = new SimpleStringProperty(image);
         this.status = new SimpleStringProperty(status);
+        this.project = new SimpleStringProperty(project);
         this.memUsage = new SimpleStringProperty(memUsage);
     }
 
@@ -26,6 +28,7 @@ public class ContainerInfo {
     public String getImage() { return image.get(); }
     public String getStatus() { return status.get(); }
     public String getMemUsage() { return memUsage.get(); }
+    public String getProject() { return project.get(); }
 
     // Optional setters if needed
     public void setName(String name) { this.name.set(name); }
@@ -38,6 +41,7 @@ public class ContainerInfo {
         return "ContainerInfo{name=" + getName() +
                 ", image=" + getImage() +
                 ", status=" + getStatus() +
+                ", project=" + getProject() +
                 ", memUsage=" + getMemUsage() + "}";
     }
 }

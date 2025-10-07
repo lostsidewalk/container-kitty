@@ -22,6 +22,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.stream.Collectors;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 
@@ -55,8 +56,8 @@ public class ContainerKittyController {
     @FXML private TableView<ContainerInfo> containerTable;
     @FXML private TableColumn<ContainerInfo, String> nameColumn;
     @FXML private TableColumn<ContainerInfo, String> imageColumn;
-    @FXML private TableColumn<ContainerInfo, String> memUsageColumn;
     @FXML private TableColumn<ContainerInfo, String> statusColumn;
+    @FXML private TableColumn<ContainerInfo, String> projectColumn;
     @FXML private Button startButton;
     @FXML private Button stopAllButton;
     @FXML private TableView<CompositionVersion> compositionVersionTable;
@@ -69,7 +70,6 @@ public class ContainerKittyController {
     private List<Version> availableVersions = List.of();
     private Timeline statusUpdater;
     private File tempComposeDir;
-    private File activeComposeFile;
 
     @FXML
     private void handleAbout() {
@@ -169,8 +169,15 @@ public class ContainerKittyController {
         logArea.clear();
     }
 
+    private String activeComposeProject; // project name of the running composition
+
     @FXML
     private void handleStart() {
+        if (activeComposeProject != null) {
+            showError("Another composition is already running: " + activeComposeProject);
+            return;
+        }
+
         CompositionVersion selected = compositionVersionTable.getSelectionModel().getSelectedItem();
         if (selected == null) {
             showError("No composition/version selected.");
@@ -179,13 +186,8 @@ public class ContainerKittyController {
         Composition composition = selected.getComposition();
         Version version = selected.getVersion();
 
-
-        if (composition == null) {
-            showError("No composition selected.");
-            return;
-        }
-        if (version == null) {
-            showError("No version selected.");
+        if (composition == null || version == null) {
+            showError("Composition or version not selected.");
             return;
         }
 
@@ -199,14 +201,17 @@ public class ContainerKittyController {
                     return;
                 }
 
-                // Write .env file with IMAGE_TAG variable
+                // Write .env file with IMAGE_TAG
                 File envFile = new File(tempComposeDir, ".env");
                 Files.writeString(envFile.toPath(), "IMAGE_TAG=" + version.getIdent() + "\n", StandardCharsets.UTF_8);
                 appendLog("Wrote environment file with IMAGE_TAG=" + version.getIdent());
 
-                // Run docker compose with the env file
+                // Compose project name (used for labeling containers)
+                String projectName = sanitizeProjectName(composition.getName() + "-" + version.getIdent());
+
                 String[] cmd = dockerCmd(
                         COMPOSE_CMD,
+                        "-p", projectName,
                         "--env-file", envFile.getAbsolutePath(),
                         "-f", composeFile.getAbsolutePath(),
                         UP_CMD, "-d"
@@ -214,7 +219,7 @@ public class ContainerKittyController {
                 _runCommand(cmd);
 
                 appendLog("Started " + composition + " version " + version);
-                activeComposeFile = composeFile;
+                activeComposeProject = projectName; // new field
             } catch (IOException e) {
                 String msg = "Error starting composition: " + e.getMessage();
                 appendLog("ERROR: " + msg);
@@ -223,16 +228,48 @@ public class ContainerKittyController {
         });
     }
 
+    private static String sanitizeProjectName(String name) {
+        // Lowercase, replace non-alphanumeric chars with dash
+        return name.toLowerCase().replaceAll("[^a-z0-9-_]", "-");
+    }
+
+    private void detectActiveComposeProject() {
+        try {
+            ProcessBuilder pb = new ProcessBuilder(DOCKER_CMD, "ps", "--format",
+                    "{{.Names}}|{{.Label \"com.docker.compose.project\"}}|{{.Label \"com.docker.compose.service\"}}|{{.Label \"com.docker.compose.version\"}}");
+            String command = pb.command().stream().collect(Collectors.joining(" "));
+            appendLog("Command: " + command);
+            Process process = pb.start();
+
+            try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    String[] parts = line.split("\\|");
+                    if (parts.length >= 2) {
+                        String project = parts[1];
+                        if (project != null && !project.isEmpty()) {
+                            activeComposeProject = project;
+                            appendLog("Detected active composition project: " + activeComposeProject);
+                            break; // pick the first running project
+                        }
+                    }
+                }
+            }
+        } catch (IOException e) {
+            appendLog("Failed to detect active composition: " + e.getMessage());
+        }
+    }
+
     @FXML
     private void handleStopAll() {
         runCommandAsync(() -> {
-            if (activeComposeFile != null && activeComposeFile.exists()) {
-                String[] cmd = dockerCmd(COMPOSE_CMD, "-f", activeComposeFile.getAbsolutePath(), DOWN_CMD);
+            if (activeComposeProject != null) {
+                String[] cmd = dockerCmd(COMPOSE_CMD, "-p", activeComposeProject, DOWN_CMD);
                 _runCommand(cmd);
-                appendLog("Took down entire composition.");
-                activeComposeFile = null;
+                appendLog("Took down project: " + activeComposeProject);
+                activeComposeProject = null;
             } else {
-                String msg = "No composition is currently running; nothing to stop.";
+                String msg = "No active composition detected; nothing to stop.";
                 appendLog("ERROR: " + msg);
                 showError(msg);
             }
@@ -292,15 +329,16 @@ public class ContainerKittyController {
         startButton.setDisable(true);
         stopAllButton.setDisable(true);
 
-        memUsageColumn.setCellValueFactory(data -> data.getValue().memUsageProperty());
-
+        // cell value factories
         compositionColumn.setCellValueFactory(data ->
                 new SimpleStringProperty(data.getValue().getCompositionName()));
         versionColumn.setCellValueFactory(data ->
                 new SimpleStringProperty(data.getValue().getVersionIdent()));
         commentColumn.setCellValueFactory(data ->
                 new SimpleStringProperty(data.getValue().getCompositionComment()));
+        projectColumn.setCellValueFactory(data -> new SimpleStringProperty(data.getValue().getProject()));
 
+        // pref width
         compositionColumn.setPrefWidth(200);
         versionColumn.setPrefWidth(120);
         commentColumn.prefWidthProperty().bind(
@@ -309,24 +347,21 @@ public class ContainerKittyController {
                         .subtract(versionColumn.widthProperty())
                         .subtract(35) // small adjustment for scrollbar/margins
         );
+        projectColumn.setPrefWidth(150); // adjust as needed
 
+        // selection model
         compositionVersionTable.getSelectionModel().setSelectionMode(SelectionMode.SINGLE);
-
-        // Enable Start/Stop when something is selected
         compositionVersionTable.getSelectionModel().selectedItemProperty().addListener((obs, oldV, newV) -> {
             boolean enabled = newV != null;
             startButton.setDisable(!enabled);
             stopAllButton.setDisable(!enabled);
         });
-
         containerTable.getSelectionModel().setSelectionMode(SelectionMode.SINGLE);
 
         // Table bindings
         nameColumn.setCellValueFactory(data -> data.getValue().nameProperty());
         imageColumn.setCellValueFactory(data -> data.getValue().imageProperty());
-        memUsageColumn.setCellValueFactory(data -> data.getValue().memUsageProperty());
         statusColumn.setCellValueFactory(data -> data.getValue().statusProperty());
-
         statusColumn.setCellFactory(column -> new TableCell<>() {
             @Override
             protected void updateItem(String status, boolean empty) {
@@ -344,6 +379,7 @@ public class ContainerKittyController {
                 }
             }
         });
+        projectColumn.setCellValueFactory(data -> new SimpleStringProperty(data.getValue().getProject()));
 
         try {
             tempComposeDir = Files.createTempDirectory("docker-compose-temp").toFile();
@@ -355,6 +391,7 @@ public class ContainerKittyController {
         }
 
         refreshContainers();
+        detectActiveComposeProject();
 
         statusUpdater = new Timeline(new KeyFrame(Duration.seconds(5), event -> {
             refreshContainers();
@@ -536,40 +573,18 @@ public class ContainerKittyController {
             style = "-fx-text-fill: red; -fx-font-weight: bold;";
         } else {
             statusText = "Status: " + running + "/" + total + " running";
+            if (activeComposeProject != null) {
+                statusText += " | Active Composition: " + activeComposeProject;
+            }
             style = running == total
                     ? "-fx-text-fill: green; -fx-font-weight: bold;"
                     : "-fx-text-fill: orange; -fx-font-weight: bold;";
         }
 
-        List<Label> containerLabels = containers.stream()
-                .filter(c -> !c.getStatus().startsWith("Up"))
-                .map(c -> {
-                    Label lbl = new Label(c.getName() + " (" + c.getStatus() + ")");
-                    lbl.setStyle("-fx-text-fill: red;");
-                    return lbl;
-                })
-                .toList();
-
+        String s = statusText;
         Platform.runLater(() -> {
-            statusLabel.setText(statusText);
+            statusLabel.setText(s);
             statusLabel.setStyle(style);
-
-            if (containerLabels.isEmpty()) {
-                statusLabel.setTooltip(null);
-            } else {
-                VBox tooltipBox = new VBox(2);
-                tooltipBox.getChildren().addAll(containerLabels);
-
-                ScrollPane scrollPane = new ScrollPane(tooltipBox);
-                scrollPane.setPrefWidth(250);
-                scrollPane.setPrefHeight(150);
-                scrollPane.setFitToWidth(true);
-
-                Tooltip tooltip = new Tooltip();
-                tooltip.setGraphic(scrollPane);
-                tooltip.setText(""); // no text, only graphic
-                statusLabel.setTooltip(tooltip);
-            }
         });
     }
 
@@ -582,7 +597,10 @@ public class ContainerKittyController {
         Platform.runLater(() -> containerTable.getItems().clear());
 
         try {
-            ProcessBuilder pb = new ProcessBuilder(DOCKER_CMD, "ps", "--format", "{{.Names}}|{{.Image}}|{{.Status}}");
+            ProcessBuilder pb = new ProcessBuilder(
+                    DOCKER_CMD, "ps", "--format",
+                    "{{.Names}}|{{.Image}}|{{.Status}}|{{.Label \"com.docker.compose.project\"}}|{{.RunningFor}}"
+            );
             Process process = pb.start();
 
             try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
@@ -590,8 +608,12 @@ public class ContainerKittyController {
                 //noinspection NestedAssignment,MethodCallInLoopCondition
                 while ((line = reader.readLine()) != null) {
                     String[] parts = line.split("\\|");
-                    if (parts.length == 3) {
-                        ContainerInfo container = new ContainerInfo(parts[0], parts[1], parts[2], null);
+                    if (parts.length >= 4) {
+                        String name = parts[0];
+                        String image = parts[1];
+                        String status = parts[2];
+                        String project = parts[3];
+                        ContainerInfo container = new ContainerInfo(name, image, status, project, null);
                         Platform.runLater(() -> {
                             containerTable.getItems().add(container);
                             if (selectedName != null && selectedName.equals(container.getName())) {
@@ -629,7 +651,7 @@ public class ContainerKittyController {
     /** Internal command runner */
     private void _runCommand(String[] command) {
         try {
-            appendLog("Command: " + Arrays.asList(command));
+            appendLog("Command: " + Arrays.asList(command).stream().collect(Collectors.joining(" ")));
             ProcessBuilder pb = new ProcessBuilder(command);
             pb.redirectErrorStream(true);
             pb.environment().put("BUILDKIT_PROGRESS", "plain");
