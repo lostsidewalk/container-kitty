@@ -2360,6 +2360,7 @@
           <option value="OverlyComplexBooleanExpression" />
           <option value="StringBufferWithoutInitialCapacity" />
           <option value="StandardVariableNames" />
+          <option value="MethodMayBeSynchronized" />
         </list>
       </option>
     </inspection_tool>
