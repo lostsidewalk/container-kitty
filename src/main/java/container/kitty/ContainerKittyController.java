@@ -60,6 +60,7 @@ public class ContainerKittyController {
     @FXML private TableColumn<ContainerInfo, String> projectColumn;
     @FXML private Button startButton;
     @FXML private Button stopAllButton;
+    @FXML private Button stopButton;
     @FXML private TableView<CompositionVersion> compositionVersionTable;
     @FXML private TableColumn<CompositionVersion, String> compositionColumn;
     @FXML private TableColumn<CompositionVersion, String> versionColumn;
@@ -191,6 +192,13 @@ public class ContainerKittyController {
             return;
         }
 
+        // Compute project name first
+        String projectName = sanitizeProjectName(composition.getName() + "-" + version.getIdent());
+
+        // Set active immediately for UI updates
+        activeComposeProject = projectName;
+        updateButtons();
+
         runCommandAsync(() -> {
             try {
                 File composeFile = downloadComposeFile(composition.getName());
@@ -198,17 +206,17 @@ public class ContainerKittyController {
                     String msg = "Failed to download compose file for " + composition;
                     appendLog("ERROR: " + msg);
                     showError(msg);
+                    activeComposeProject = null;
+                    Platform.runLater(this::updateButtons);
                     return;
                 }
 
-                // Write .env file with IMAGE_TAG
+                // Write .env file
                 File envFile = new File(tempComposeDir, ".env");
                 Files.writeString(envFile.toPath(), "IMAGE_TAG=" + version.getIdent() + "\n", StandardCharsets.UTF_8);
                 appendLog("Wrote environment file with IMAGE_TAG=" + version.getIdent());
 
-                // Compose project name (used for labeling containers)
-                String projectName = sanitizeProjectName(composition.getName() + "-" + version.getIdent());
-
+                // Run docker-compose up
                 String[] cmd = dockerCmd(
                         COMPOSE_CMD,
                         "-p", projectName,
@@ -219,11 +227,12 @@ public class ContainerKittyController {
                 _runCommand(cmd);
 
                 appendLog("Started " + composition + " version " + version);
-                activeComposeProject = projectName; // new field
             } catch (IOException e) {
                 String msg = "Error starting composition: " + e.getMessage();
                 appendLog("ERROR: " + msg);
                 showError(msg);
+                activeComposeProject = null;
+                Platform.runLater(this::updateButtons);
             }
         });
     }
@@ -261,18 +270,44 @@ public class ContainerKittyController {
     }
 
     @FXML
-    private void handleStopAll() {
+    private void handleStop() {
+        if (activeComposeProject == null) {
+            appendLog("No active composition to stop.");
+            return;
+        }
+
+        String projectToStop = activeComposeProject;
+        // Reset immediately so UI updates
+        activeComposeProject = null;
+        updateButtons();
+
         runCommandAsync(() -> {
-            if (activeComposeProject != null) {
-                String[] cmd = dockerCmd(COMPOSE_CMD, "-p", activeComposeProject, DOWN_CMD);
+            String[] cmd = dockerCmd(COMPOSE_CMD, "-p", projectToStop, DOWN_CMD);
+            _runCommand(cmd);
+            appendLog("Stopped active composition: " + projectToStop);
+            refreshContainers();
+        });
+    }
+
+    @FXML
+    private void handleStopAll() {
+        // Reset immediately
+        activeComposeProject = null;
+        updateButtons();
+
+        runCommandAsync(() -> {
+            List<String> runningProjects = containerTable.getItems().stream()
+                    .filter(c -> c.getStatus().startsWith("Up"))
+                    .map(ContainerInfo::getProject)
+                    .distinct()
+                    .toList();
+
+            for (String project : runningProjects) {
+                String[] cmd = dockerCmd(COMPOSE_CMD, "-p", project, DOWN_CMD);
                 _runCommand(cmd);
-                appendLog("Took down project: " + activeComposeProject);
-                activeComposeProject = null;
-            } else {
-                String msg = "No active composition detected; nothing to stop.";
-                appendLog("ERROR: " + msg);
-                showError(msg);
+                appendLog("Stopped composition: " + project);
             }
+
             refreshContainers();
         });
     }
@@ -328,6 +363,7 @@ public class ContainerKittyController {
         // Disable controls initially
         startButton.setDisable(true);
         stopAllButton.setDisable(true);
+        stopButton.setDisable(true); // default
 
         // cell value factories
         compositionColumn.setCellValueFactory(data ->
@@ -352,9 +388,7 @@ public class ContainerKittyController {
         // selection model
         compositionVersionTable.getSelectionModel().setSelectionMode(SelectionMode.SINGLE);
         compositionVersionTable.getSelectionModel().selectedItemProperty().addListener((obs, oldV, newV) -> {
-            boolean enabled = newV != null;
-            startButton.setDisable(!enabled);
-            stopAllButton.setDisable(!enabled);
+            updateButtons();
         });
         containerTable.getSelectionModel().setSelectionMode(SelectionMode.SINGLE);
 
@@ -390,8 +424,8 @@ public class ContainerKittyController {
             showError(msg);
         }
 
-        refreshContainers();
         detectActiveComposeProject();
+        refreshContainers();
 
         statusUpdater = new Timeline(new KeyFrame(Duration.seconds(5), event -> {
             refreshContainers();
@@ -620,8 +654,11 @@ public class ContainerKittyController {
                                 containerTable.getSelectionModel().select(container);
                             }
                         });
+                        // Once all containers are added:
+                        Platform.runLater(this::updateButtons);
                     }
                 }
+                updateButtons(); // <-- enable buttons if something is already running
             }
         } catch (IOException e) {
             appendLog("Error fetching containers: " + e.getMessage());
@@ -631,21 +668,28 @@ public class ContainerKittyController {
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
 
     private void runCommandAsync(Runnable task) {
-        Thread t = new Thread(() -> {
+        executor.submit(() -> {
+            // Disable all controls during execution
             setControlsDisabled(true);
             try {
                 task.run();
             } finally {
                 setControlsDisabled(false);
+                // Update buttons once task completes
+                Platform.runLater(this::updateButtons);
             }
         });
-        t.setDaemon(true);
-        t.start();
     }
 
-    /** Enables/disables controls on FX thread */
+    /** Enables/disables all relevant controls on FX thread */
     private void setControlsDisabled(boolean disabled) {
-        Platform.runLater(() -> containerTable.setDisable(disabled));
+        Platform.runLater(() -> {
+            startButton.setDisable(disabled);
+            stopButton.setDisable(disabled);
+            stopAllButton.setDisable(disabled);
+            containerTable.setDisable(disabled);
+            compositionVersionTable.setDisable(disabled);
+        });
     }
 
     /** Internal command runner */
@@ -701,5 +745,23 @@ public class ContainerKittyController {
             statusUpdater.stop();
         }
         // Optional: stop any other background threads if needed
+    }
+
+    private void updateButtons() {
+        // Start button: disabled if any composition is running or no selection
+        CompositionVersion selected = compositionVersionTable.getSelectionModel().getSelectedItem();
+        startButton.setDisable(activeComposeProject != null || selected == null);
+
+        // Stop button: enabled if the selected composition is running
+        boolean stopEnabled = selected != null && containerTable.getItems().stream()
+                .anyMatch(c -> c.getProject().equals(
+                        sanitizeProjectName(selected.getCompositionName() + "-" + selected.getVersionIdent()))
+                        && c.getStatus().startsWith("Up"));
+        stopButton.setDisable(!stopEnabled);
+
+        // Stop All: enabled if any container is running
+        boolean anyRunning = containerTable.getItems().stream()
+                .anyMatch(c -> c.getStatus().startsWith("Up"));
+        stopAllButton.setDisable(!anyRunning);
     }
 }

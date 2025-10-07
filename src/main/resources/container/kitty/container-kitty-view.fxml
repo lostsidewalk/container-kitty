@@ -12,6 +12,7 @@
     <top>
         <ToolBar>
             <Button fx:id="startButton" text="Start" onAction="#handleStart"/>
+            <Button fx:id="stopButton" text="Stop" onAction="#handleStop"/>
             <Button fx:id="stopAllButton" text="Stop All" onAction="#handleStopAll"/>
             <Region HBox.hgrow="ALWAYS"/>
             <Button text="Refresh" onAction="#handleRefresh"/>
